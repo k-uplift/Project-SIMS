@@ -52,7 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Text(
-                '냉장고 지킴이',
+                '냉장고를 부탁해',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
