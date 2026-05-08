@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "955003603403",
+    "project_id": "projectsims-9dc71",
+    "storage_bucket": "projectsims-9dc71.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:955003603403:android:efd9bb773663d49c8b4e4e",
+        "android_client_info": {
+          "package_name": "com.fridge.my_fridge_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNUsJx5uRefjl0hbfmAGgBLbMvhrNlluY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
