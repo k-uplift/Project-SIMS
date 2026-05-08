@@ -1,0 +1,74 @@
+import os
+import secrets as _secrets
+from typing import Optional
+
+import firebase_admin
+from firebase_admin import auth as fb_auth, credentials
+from fastapi import Depends, Header, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+
+_bearer = HTTPBearer(auto_error=True)
+
+
+def _init_firebase() -> None:
+    if firebase_admin._apps:
+        return
+
+    cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if cred_path and os.path.isfile(cred_path):
+        cred = credentials.Certificate(cred_path)
+        firebase_admin.initialize_app(cred)
+    else:
+        # Cloud Run에서는 ADC(Application Default Credentials)를 자동 사용
+        firebase_admin.initialize_app()
+
+
+_init_firebase()
+
+
+class CurrentUser:
+    def __init__(self, uid: str, email: Optional[str], name: Optional[str]):
+        self.uid = uid
+        self.email = email
+        self.name = name
+
+
+def get_current_user(
+    creds: HTTPAuthorizationCredentials = Depends(_bearer),
+) -> CurrentUser:
+    token = creds.credentials
+    try:
+        decoded = fb_auth.verify_id_token(token)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid Firebase ID token: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return CurrentUser(
+        uid=decoded["uid"],
+        email=decoded.get("email"),
+        name=decoded.get("name"),
+    )
+
+
+def verify_cron_secret(
+    x_cron_secret: Optional[str] = Header(default=None, alias="X-Cron-Secret"),
+) -> bool:
+    """cron-job.org가 호출할 때 헤더로 보내는 비밀키를 검증.
+    값은 환경변수 CRON_SECRET으로 주입.
+    """
+    expected = os.getenv("CRON_SECRET")
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="CRON_SECRET not configured on server",
+        )
+    if not x_cron_secret or not _secrets.compare_digest(x_cron_secret, expected):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid or missing X-Cron-Secret header",
+        )
+    return True

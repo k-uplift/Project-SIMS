@@ -43,3 +43,19 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Backend (Python / FastAPI)
+__pycache__/
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+.env.local
+.env.*.local
+Backend/server/service-account*.json
+Backend/**/service-account*.json
+
+# Claude Code session state (local-only)
+.claude/
+

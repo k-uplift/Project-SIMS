@@ -1,0 +1,27 @@
+# Render Blueprint
+# https://render.com/docs/blueprint-spec
+#
+# 사용법:
+#   1. Render 대시보드 → New → Blueprint
+#   2. GitHub repo 선택 (Project-SIMS)
+#   3. 이 파일이 자동으로 인식됨
+#   4. service-account.json은 별도로 Secret File로 업로드 (대시보드에서)
+
+services:
+  - type: web
+    name: naengbu-server
+    runtime: docker
+    plan: free
+    region: singapore               # 한국에서 가장 가까운 무료 리전
+    rootDir: Backend/server
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: true                # main 브랜치 push 시 자동 재배포
+    envVars:
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/service-account.json
+      - key: CORS_ORIGINS
+        sync: false                 # 대시보드에서 직접 입력
+      # OpenAI / Vision API 키는 Week 2~3에서 추가
+      # - key: OPENAI_API_KEY
+      #   sync: false
