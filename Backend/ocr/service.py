@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .classifier import SourceKind, classify
-from .client import get_vision_model
+from .client import get_refine_model, get_vision_model
 from .object_vision import describe
 from .paddle_ocr import extract_text as paddle_extract_text
 from .refiner import is_enabled as refine_enabled, refine as refine_text
@@ -28,7 +28,7 @@ class ProcessResult:
 
 def _receipt_model_name() -> str:
     if refine_enabled():
-        return f"{_RECEIPT_BASE_MODEL}+{get_vision_model()}-classify"
+        return f"{_RECEIPT_BASE_MODEL}+{get_refine_model()}-classify"
     return _RECEIPT_BASE_MODEL
 
 
@@ -40,7 +40,7 @@ async def process_image(
     if kind == "receipt":
         text = await paddle_extract_text(image_bytes)
         if refine_enabled():
-            text = await refine_text(image_bytes, text)
+            text = await refine_text(text)
         return ProcessResult(
             source_kind="receipt",
             text=text,

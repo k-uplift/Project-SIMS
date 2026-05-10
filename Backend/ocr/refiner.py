@@ -1,20 +1,21 @@
-"""OCR 결과를 vision LLM으로 카테고리 분류 (JSON 출력).
+"""OCR 결과를 텍스트 전용 LLM으로 카테고리 분류 (JSON 출력).
 
-PaddleOCR 초안과 원본 이미지를 LLM에 함께 제공해서 영수증 항목을 server의
-schema-v1.md 2.8 표준 12종 카테고리로 분류한 JSON을 반환한다. 글자 보정은
-부수적이고 분류·구조화가 주 목적.
+PaddleOCR 초안만 텍스트 LLM(gpt-oss:20b 기본)에 보내 server의 schema-v1.md
+2.8 표준 12종 카테고리로 분류한 JSON을 반환한다. 이미지를 빼서 vision 모델의
+"전체 분위기" 편향(영수증 한 장이 전부 한 카테고리로 락되는 패턴)을 회피.
 
 LLM 호출 실패·유효 JSON 아닌 경우 PaddleOCR 초안을 그대로 반환 (fail-soft).
 LLM이 12종 외 카테고리명을 내면 자동으로 "기타"로 정규화한다.
 
 토글: OCR_REFINE_ENABLED 환경변수 ("true"/"false", 기본 true)
+모델: OLLAMA_REFINE_MODEL 환경변수 (기본 gpt-oss:20b)
 """
 from __future__ import annotations
 
 import json
 import os
 
-from .client import generate_with_image, get_vision_model
+from .client import generate_text_only, get_refine_model
 
 
 # server schema-v1.md 2.8 표준 12종. 변경 시 server enum과 동시 갱신 필수.
@@ -44,45 +45,45 @@ _SCHEMA_EXAMPLE = """{
 }"""
 
 
-_PROMPT_TEMPLATE = """이 이미지는 한국 영수증입니다. 다음은 OCR이 추출한 초안입니다:
+_PROMPT_TEMPLATE = """The following is an OCR draft extracted from a Korean grocery receipt:
 
 ---
 {draft}
 ---
 
-이미지와 초안을 참고해 영수증 항목을 분류한 다음 **JSON 형식만으로** 응답하세요.
+Classify each line into ONE of the 12 categories below, then output strict JSON only.
 
-[카테고리 정의 — 정확히 이 12종 중 하나만 사용]
-- 야채: 신선 채소·버섯·나물 (양파·시금치·당근·마늘·생강·고추·새송이버섯 등)
-- 과일: 신선 과일 (사과·바나나·딸기·산딸기·포도·수박 등)
-- 육류: 정육·가공육 (삼겹살·소고기·닭가슴살·햄·소시지·스팸·베이컨 등)
-- 수산물: 생선·해산물·참치캔 (고등어·새우·오징어·참치·연어 등)
-- 유제품: 우유·치즈·요거트·버터·아이스크림·콩우유
-- 달걀: 계란
-- 곡물/면: 쌀·잡곡·밀가루·국수·라면·짜파게티·파스타·시리얼
-- 조미료/소스: 간장·된장·고추장·케찹·드레싱·식초·잼·꿀·솔트·후추·조미료
-- 음료: 생수·주스·콜라·사이다·차·커피·맥주·소주·와인·양주·토닉워터
-- 냉동식품: 만두·냉동피자·즉석조리·HMR·냉동치킨·냉동만두
-- 간식/과자: 과자·스낵·빵·떡·젤리·캔디·초콜릿·꼬깔콘·새우깡·시리얼바
-- 기타: 위 11종에 명확히 들지 않는 항목 (두부·콩가공품·생활용품·봉투·쇼핑백·세제 등)
+[Categories — use these exact Korean labels, no translation]
+- 야채 — fresh vegetables, mushrooms, herbs (양파, 시금치, 당근, 마늘, 생강, 고추, 새송이버섯)
+- 과일 — fresh fruits (사과, 바나나, 딸기, 산딸기, 포도, 수박)
+- 육류 — meat / processed meat (삼겹살, 소고기, 닭가슴살, 햄, 소시지, 스팸, 베이컨)
+- 수산물 — fish, seafood, canned fish (고등어, 새우, 오징어, 참치, 연어)
+- 유제품 — dairy: 우유, 치즈, 요거트, 버터, 아이스크림, 콩우유
+- 달걀 — eggs (계란)
+- 곡물/면 — grains and noodles: 쌀, 잡곡, 밀가루, 국수, 라면, 짜파게티, 파스타, 시리얼
+- 조미료/소스 — seasonings, sauces: 간장, 된장, 고추장, 케찹, 드레싱, 식초, 잼, 꿀, 솔트, 후추
+- 음료 — drinks (incl. alcohol): 생수, 주스, 콜라, 사이다, 차, 커피, 맥주, 소주, 와인, 양주, 토닉워터
+- 냉동식품 — frozen prepared food: 만두, 냉동피자, 즉석조리, HMR, 냉동치킨
+- 간식/과자 — snacks and confectionery: 과자, 스낵, 빵, 떡, 젤리, 캔디, 초콜릿, 꼬깔콘, 새우깡
+- 기타 — anything else: 두부, 콩가공품, household goods (봉투, 쇼핑백, 세제, 휴지)
 
-[분류 규칙]
-1. 사람이 먹거나 마실 수 있는 것은 위 11개 식품 카테고리 중 가장 가까운 것으로. 애매하면 기타.
-2. 모르는 한국 브랜드 상품도 영수증 문맥상 식품이면 가장 가까운 카테고리.
-3. 두부·콩가공품·청국장 → 기타 (12종에 명확한 카테고리 없음).
-4. 생활용품·봉투·쇼핑백·세제·휴지 → 기타.
-5. 라면·짜파게티 → 곡물/면 (간식/과자 아님).
-6. 빵 → 간식/과자 (곡물/면 아님).
+[Classification rules]
+1. If the item is edible or drinkable, pick the closest food category. If unsure, use 기타.
+2. Unknown Korean brand items that look like food → closest food category.
+3. 두부, 콩가공품, 청국장 → 기타 (no exact category fits).
+4. Bags, wrappers, household goods, detergent → 기타.
+5. 라면, 짜파게티 → 곡물/면 (NOT 간식/과자).
+6. 빵 → 간식/과자 (NOT 곡물/면).
 
-[JSON 스키마 — 정확히 이 구조로]
+[JSON schema — output exactly this structure]
 {schema}
 
-[엄격한 규칙]
-- name은 OCR 초안 그대로. 띄어쓰기 보정만 허용. 글자 자체 수정 금지.
-- category 값은 정확히 위 12종 중 하나만. 다른 표기 (예: "채소", "유제품류", "가공식품류") 절대 금지.
-- 영수증의 매장명·주소·일시·POS·합계·부가세·결제·카드번호는 items가 아닌 metadata 배열에.
-- 응답은 JSON 객체 하나만. 마크다운 fence(```), 앞뒤 설명 모두 금지.
-- 가격/수량을 OCR 초안에서 못 찾으면 빈 문자열 "" 사용. 절대 추측하지 말 것."""
+[Strict requirements]
+- `name`: copy the OCR draft text verbatim. Whitespace cleanup OK. NEVER modify Korean characters.
+- `category`: must be exactly one of the 12 Korean labels above (야채, 과일, 육류, 수산물, 유제품, 달걀, 곡물/면, 조미료/소스, 음료, 냉동식품, 간식/과자, 기타). No translations, no synonyms.
+- Store name, address, datetime, POS, totals, tax, payment, card number → put in `metadata` array, never in `items`.
+- Output ONE JSON object only. No markdown fences (```), no preamble, no commentary.
+- For `price` / `quantity`: use empty string "" when missing from the OCR draft. NEVER guess."""
 
 
 def is_enabled() -> bool:
@@ -115,21 +116,24 @@ def _normalize_categories(parsed: dict) -> dict:
     return parsed
 
 
-async def refine(image_bytes: bytes, draft: str) -> str:
+async def refine(draft: str) -> str:
     """LLM이 유효 JSON을 못 만들면 초안을 그대로 돌려줌."""
     if not draft.strip():
         return draft
 
     prompt = _PROMPT_TEMPLATE.format(draft=draft, schema=_SCHEMA_EXAMPLE)
     try:
-        result = await generate_with_image(
-            image_bytes=image_bytes,
+        result = await generate_text_only(
             prompt=prompt,
-            model=get_vision_model(),
+            model=get_refine_model(),
         )
     except Exception as exc:
         print(f"[refine] LLM call failed, falling back to draft: {type(exc).__name__}: {exc}", flush=True)
         return draft
+
+    # TEMP DEBUG: gpt-oss 출력 형식 확인용
+    print(f"[refine] raw LLM response (len={len(result)}):", flush=True)
+    print(f"[refine] >>>{result[:1500]}<<<", flush=True)
 
     cleaned = _strip_json_fence(result)
     try:

@@ -32,7 +32,7 @@ import httpx
 _SAMPLES_DIR = Path(__file__).resolve().parent / "samples"
 _SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
 _DEFAULT_SERVER = "http://localhost:8081"
-_REQUEST_TIMEOUT = 300.0
+_REQUEST_TIMEOUT = 700.0
 
 
 def _iter_samples(samples_dir: Path) -> list[Path]:
