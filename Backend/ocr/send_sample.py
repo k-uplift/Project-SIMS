@@ -10,7 +10,6 @@
 - 별도 셸에서 uvicorn 먼저 띄워둘 것:
     cd Backend
     $env:OLLAMA_BASE_URL     = "http://119.66.214.191:31342"
-    $env:OLLAMA_OCR_MODEL    = "deepseek-ocr:latest"
     $env:OLLAMA_VISION_MODEL = "qwen2.5vl:7b"
     uvicorn ocr.main:app --reload --port 8081
 
@@ -25,7 +24,7 @@ import argparse
 import mimetypes
 import sys
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 import httpx
 

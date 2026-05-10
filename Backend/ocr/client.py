@@ -1,15 +1,14 @@
 """Ollama 비전 모델 호출 클라이언트.
 
-Mac Mini 등 외부 호스트에서 띄운 Ollama 서버에 base64 이미지를 보내고
-텍스트 응답을 받는 저수준 어댑터. 모델/엔드포인트는 환경변수로 분리한다.
+Mac Mini 등 외부 호스트의 Ollama 서버에 base64 이미지를 보내고 텍스트 응답을
+받는 저수준 어댑터. 이미지 분류·사물 인식 단계에서만 사용된다 (영수증 OCR은
+PaddleOCR 로컬 처리로 분리됨).
 
-- OCR 전용 모델 (영수증·인쇄 텍스트):    OLLAMA_OCR_MODEL    (기본 deepseek-ocr)
-- 일반 비전 모델 (분류·사물 인식):        OLLAMA_VISION_MODEL (기본 qwen2.5vl:7b)
+- 일반 비전 모델 (분류·사물 인식): OLLAMA_VISION_MODEL (기본 qwen2.5vl:7b)
 """
 from __future__ import annotations
 
 import base64
-import json
 import os
 from typing import Optional
 
@@ -17,17 +16,12 @@ import httpx
 
 
 DEFAULT_BASE_URL = "http://localhost:11434"
-DEFAULT_OCR_MODEL = "deepseek-ocr"
 DEFAULT_VISION_MODEL = "qwen2.5vl:7b"
 DEFAULT_TIMEOUT_SECONDS = 180.0
 
 
 def get_base_url() -> str:
     return os.getenv("OLLAMA_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
-
-
-def get_ocr_model() -> str:
-    return os.getenv("OLLAMA_OCR_MODEL", DEFAULT_OCR_MODEL)
 
 
 def get_vision_model() -> str:
@@ -63,16 +57,4 @@ async def generate_with_image(
         resp = await client.post(url, json=payload)
         resp.raise_for_status()
         data = resp.json()
-    # TEMP DEBUG: 영수증 OCR 빈 응답 진단용 — 디버깅 끝나면 제거
-    response_field = data.get("response") or ""
-    print(
-        f"[ollama:{model}] keys={list(data.keys())} "
-        f"response_len={len(response_field)} "
-        f"done_reason={data.get('done_reason')!r}",
-        flush=True,
-    )
-    print(
-        f"[ollama:{model}] raw={json.dumps(data, ensure_ascii=False)[:1500]}",
-        flush=True,
-    )
-    return response_field
+    return data.get("response", "")

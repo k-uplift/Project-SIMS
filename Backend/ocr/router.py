@@ -1,7 +1,7 @@
 """이미지 처리 엔드포인트.
 
-업로드된 이미지를 분류해 영수증이면 OCR(deepseek-ocr), 실물 사진이면
-사물 인식(vision LLM)으로 자동 분기한다.
+업로드된 이미지를 분류해 영수증이면 OCR(PaddleOCR, 데스크탑 로컬), 실물
+사진이면 사물 인식(vision LLM, Mac Mini Ollama)으로 자동 분기한다.
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class OcrTextResponse(BaseModel):
     summary="이미지 분류 후 OCR 또는 사물 인식",
     description=(
         "이미지를 비전 LLM으로 분류 → "
-        "영수증이면 OLLAMA_OCR_MODEL(기본 deepseek-ocr)로 텍스트 추출, "
+        "영수증이면 PaddleOCR(데스크탑 로컬, 한국어 모델)로 텍스트 추출, "
         "실물 사진이면 OLLAMA_VISION_MODEL(기본 qwen2.5vl:7b)로 한국어 사물 설명을 반환한다."
     ),
 )

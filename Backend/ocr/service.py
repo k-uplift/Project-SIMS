@@ -1,8 +1,8 @@
 """OCR 서비스 계층.
 
-- extract_text:   영수증·인쇄 텍스트 → raw text (deepseek-ocr 직접 호출)
-- describe:       실물 이미지 → 한국어 사물 설명 (vision LLM)
-- process_image:  분류 후 위 두 파이프라인으로 자동 분기
+- describe:      실물 이미지 → 한국어 사물 설명 (Mac Mini Ollama, vision LLM)
+- process_image: 분류 후 분기. 영수증은 PaddleOCR(데스크탑) → vision LLM 검수,
+                 실물은 vision LLM(Mac Mini Ollama).
 """
 from __future__ import annotations
 
@@ -10,23 +10,13 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .classifier import SourceKind, classify
-from .client import generate_with_image, get_ocr_model, get_vision_model
+from .client import get_vision_model
 from .object_vision import describe
-from .preprocess import preprocess_for_ocr
+from .paddle_ocr import extract_text as paddle_extract_text
+from .refiner import is_enabled as refine_enabled, refine as refine_text
 
 
-_DEFAULT_OCR_PROMPT = "<|grounding|>Convert the document to markdown."
-
-
-async def extract_text(
-    image_bytes: bytes,
-    prompt: Optional[str] = None,
-) -> str:
-    return await generate_with_image(
-        image_bytes=image_bytes,
-        prompt=prompt or _DEFAULT_OCR_PROMPT,
-        model=get_ocr_model(),
-    )
+_RECEIPT_BASE_MODEL = "paddleocr-korean"
 
 
 @dataclass
@@ -36,14 +26,29 @@ class ProcessResult:
     model: str
 
 
+def _receipt_model_name() -> str:
+    if refine_enabled():
+        return f"{_RECEIPT_BASE_MODEL}+{get_vision_model()}-classify"
+    return _RECEIPT_BASE_MODEL
+
+
 async def process_image(
     image_bytes: bytes,
     prompt: Optional[str] = None,
 ) -> ProcessResult:
     kind = await classify(image_bytes)
     if kind == "receipt":
-        ocr_bytes = preprocess_for_ocr(image_bytes)
-        text = await extract_text(ocr_bytes, prompt=prompt)
-        return ProcessResult(source_kind="receipt", text=text, model=get_ocr_model())
+        text = await paddle_extract_text(image_bytes)
+        if refine_enabled():
+            text = await refine_text(image_bytes, text)
+        return ProcessResult(
+            source_kind="receipt",
+            text=text,
+            model=_receipt_model_name(),
+        )
     text = await describe(image_bytes, prompt=prompt)
-    return ProcessResult(source_kind="object", text=text, model=get_vision_model())
+    return ProcessResult(
+        source_kind="object",
+        text=text,
+        model=get_vision_model(),
+    )
