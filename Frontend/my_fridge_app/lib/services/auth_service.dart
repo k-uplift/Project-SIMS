@@ -3,11 +3,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AppUser {
   final String id;
   final String email;
+  final String nickname;
   final String password;
 
   const AppUser({
     required this.id,
     required this.email,
+    required this.nickname,
     required this.password,
   });
 }
@@ -17,6 +19,7 @@ class AuthService {
     const AppUser(
       id: 'user_1',
       email: 'test@test.com',
+      nickname: '테스트',
       password: '1234',
     ),
   ];
@@ -25,6 +28,7 @@ class AuthService {
 
   static Future<String?> signUp({
     required String email,
+    required String nickname,
     required String password,
     required String passwordConfirm,
   }) async {
@@ -43,6 +47,7 @@ class AuthService {
     final user = AppUser(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       email: email,
+      nickname: nickname,
       password: password,
     );
 

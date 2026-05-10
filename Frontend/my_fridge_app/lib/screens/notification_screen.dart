@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import '../models/ingredient.dart';
 import '../services/ingredient_service.dart';
@@ -11,6 +13,32 @@ class NotificationScreen extends StatelessWidget {
     if (dday <= 2) return AppColors.warningRed;
     if (dday <= 5) return AppColors.orange;
     return AppColors.mainGreen;
+  }
+
+  Widget imageView(Ingredient item) {
+    if (item.imagePath == null) {
+      return Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: AppColors.mainGreen.withOpacity(0.15),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.image,
+          color: AppColors.mainGreen,
+        ),
+      );
+    }
+
+    return ClipOval(
+      child: Image.file(
+        File(item.imagePath!),
+        width: 48,
+        height: 48,
+        fit: BoxFit.cover,
+      ),
+    );
   }
 
   @override
@@ -65,10 +93,7 @@ class NotificationScreen extends StatelessWidget {
                           ),
                           child: Row(
                             children: [
-                              Text(
-                                item.emoji,
-                                style: const TextStyle(fontSize: 32),
-                              ),
+                              imageView(item),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Column(

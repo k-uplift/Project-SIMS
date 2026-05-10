@@ -1,6 +1,18 @@
+import 'dart:convert';
+import 'dart:io';
+
+import '../models/ingredient.dart';
 import '../models/recipe.dart';
+import 'ingredient_service.dart';
 
 class RecipeService {
+  static const String _baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:8000',
+  );
+  static const String _fridgeId = 'fridge_1';
+  static const String _devToken = 'dev-token';
+
   static final List<Recipe> _recipes = [
     const Recipe(
       id: '1',
@@ -51,6 +63,39 @@ class RecipeService {
     return List.from(_recipes);
   }
 
+  static Future<List<Recipe>> recommendRecipes({
+    int maxResults = 3,
+    bool useDummyOnFailure = true,
+  }) async {
+    final ingredients = await IngredientService.getIngredients();
+
+    if (ingredients.isEmpty) {
+      return [];
+    }
+
+    try {
+      final response = await _request(
+        method: 'POST',
+        path: '/recipes/recommend',
+        body: {
+          'fridgeId': _fridgeId,
+          'maxResults': maxResults,
+          'ingredients': ingredients.map(_ingredientToJson).toList(),
+        },
+      );
+      final decoded = jsonDecode(response) as Map<String, dynamic>;
+      final recipes = decoded['recipes'] as List<dynamic>? ?? [];
+
+      return recipes
+          .map((item) => _recipeFromJson(item as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      if (!useDummyOnFailure) rethrow;
+      await Future.delayed(const Duration(milliseconds: 600));
+      return _dummyRecommendations(ingredients, maxResults);
+    }
+  }
+
   static Future<Recipe?> searchRecipe(String keyword) async {
     await Future.delayed(const Duration(milliseconds: 300));
 
@@ -73,5 +118,99 @@ class RecipeService {
     }
 
     return null;
+  }
+
+  static Future<String> _request({
+    required String method,
+    required String path,
+    Map<String, dynamic>? body,
+  }) async {
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 5);
+
+    try {
+      final request = await client.openUrl(method, Uri.parse('$_baseUrl$path'));
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_devToken');
+      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+
+      if (body != null) {
+        request.write(jsonEncode(body));
+      }
+
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException(responseBody);
+      }
+
+      return responseBody;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  static Map<String, dynamic> _ingredientToJson(Ingredient ingredient) {
+    return {
+      'name': ingredient.name,
+      'category': ingredient.category,
+      'count': ingredient.count,
+      'expireDate': ingredient.expireDate,
+      'dday': ingredient.dday,
+    };
+  }
+
+  static Recipe _recipeFromJson(Map<String, dynamic> json) {
+    return Recipe(
+      id: json['id'] as String? ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
+      title: json['title'] as String? ?? '추천 레시피',
+      time: json['time'] as String? ?? '20분',
+      description: json['description'] as String? ?? '',
+      ownedIngredients: _stringList(json['ownedIngredients']),
+      missingIngredients: _stringList(json['missingIngredients']),
+      steps: _stringList(json['steps']),
+    );
+  }
+
+  static List<String> _stringList(dynamic value) {
+    if (value is! List) return [];
+    return value.map((item) => item.toString()).toList();
+  }
+
+  static List<Recipe> _dummyRecommendations(
+    List<Ingredient> ingredients,
+    int maxResults,
+  ) {
+    final ingredientNames = ingredients.map((item) => item.name).toSet();
+    final sortedIngredients = List<Ingredient>.from(ingredients)
+      ..sort((a, b) => a.dday.compareTo(b.dday));
+
+    final recommended = _recipes.where((recipe) {
+      return recipe.ownedIngredients.any(ingredientNames.contains);
+    }).toList();
+
+    if (recommended.isNotEmpty) {
+      return recommended.take(maxResults).toList();
+    }
+
+    final first = sortedIngredients.first;
+    return [
+      Recipe(
+        id: 'dummy_${first.id}',
+        title: '${first.name} 활용 간단 요리',
+        time: '20분',
+        description:
+            '${first.name}을 먼저 사용하도록 구성한 임시 추천입니다. LLM API가 연결되면 실제 추천 결과로 교체됩니다.',
+        ownedIngredients: [first.name],
+        missingIngredients: ['소금', '후추'],
+        steps: [
+          '${first.name}을 먹기 좋은 크기로 손질합니다.',
+          '팬을 예열하고 재료를 넣어 익힙니다.',
+          '소금과 후추로 간을 맞춥니다.',
+          '그릇에 담아 마무리합니다.',
+        ],
+      ),
+    ];
   }
 }

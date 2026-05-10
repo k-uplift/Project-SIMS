@@ -6,10 +6,9 @@ import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
 
 void main() async {
-  // 1. Flutter 바인딩 초기화 확인
+
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 2. 파이어베이스 초기화
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );

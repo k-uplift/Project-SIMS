@@ -154,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final userEmail = AuthService.currentUser?.email ?? 'OO';
+    final userNickname = AuthService.currentUser?.nickname ?? 'OO';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -239,7 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 18),
               Text(
-                '$userEmail 님의 냉장고',
+                '$userNickname 님의 냉장고',
                 style: const TextStyle(
                   color: AppColors.textSub,
                   fontWeight: FontWeight.bold,
@@ -322,12 +322,26 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 12),
               FutureBuilder<List<Recipe>>(
-                future: RecipeService.getRecipes(),
+                future: RecipeService.recommendRecipes(),
                 builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (snapshot.hasError) {
+                    return const Text(
+                      '추천 레시피를 불러오지 못했습니다.',
+                      style: TextStyle(color: AppColors.textSub),
+                    );
+                  }
+
                   final recipes = snapshot.data ?? [];
 
                   if (recipes.isEmpty) {
-                    return const Text('추천 레시피가 없습니다.');
+                    return const Text(
+                      '식재료를 등록하면 추천 레시피가 표시됩니다.',
+                      style: TextStyle(color: AppColors.textSub),
+                    );
                   }
 
                   return Column(

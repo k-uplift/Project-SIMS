@@ -12,6 +12,7 @@ class SignupScreen extends StatefulWidget {
 
 class _SignupScreenState extends State<SignupScreen> {
   final emailController = TextEditingController();
+  final nicknameController = TextEditingController();
   final passwordController = TextEditingController();
   final passwordConfirmController = TextEditingController();
 
@@ -20,6 +21,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Future<void> signUp() async {
     if (emailController.text.trim().isEmpty ||
+        nicknameController.text.trim().isEmpty ||
         passwordController.text.trim().isEmpty ||
         passwordConfirmController.text.trim().isEmpty) {
       showMessage('모든 값을 입력해주세요.', false);
@@ -28,6 +30,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
     final result = await AuthService.signUp(
       email: emailController.text.trim(),
+      nickname: nicknameController.text.trim(),
       password: passwordController.text.trim(),
       passwordConfirm: passwordConfirmController.text.trim(),
     );
@@ -46,6 +49,15 @@ class _SignupScreenState extends State<SignupScreen> {
         Navigator.pop(context);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    nicknameController.dispose();
+    passwordController.dispose();
+    passwordConfirmController.dispose();
+    super.dispose();
   }
 
   void showMessage(String text, bool success) {
@@ -82,6 +94,19 @@ class _SignupScreenState extends State<SignupScreen> {
               controller: emailController,
               decoration: InputDecoration(
                 hintText: '이메일',
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nicknameController,
+              decoration: InputDecoration(
+                hintText: '닉네임',
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(

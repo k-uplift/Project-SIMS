@@ -8,11 +8,7 @@ import '../services/ingredient_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/bottom_nav.dart';
 
-enum RegisterMode {
-  none,
-  receipt,
-  image,
-}
+enum RegisterMode { none, receipt, image, manual }
 
 class OcrScreen extends StatefulWidget {
   const OcrScreen({super.key});
@@ -22,14 +18,38 @@ class OcrScreen extends StatefulWidget {
 }
 
 class _OcrScreenState extends State<OcrScreen> {
+  final _manualFormKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _countController = TextEditingController(text: '1');
+  final _expireDateController = TextEditingController();
+  String _selectedCategory = '채소';
   RegisterMode mode = RegisterMode.none;
   bool hasScanned = false;
   bool showCompleteMessage = false;
   XFile? pickedImage;
 
-  Future<void> takePicture(RegisterMode selectedMode) async {
+  static const List<String> _categories = [
+    '채소',
+    '과일',
+    '육류',
+    '수산물',
+    '유제품',
+    '신선식품',
+    '가공식품',
+    '기타',
+  ];
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _countController.dispose();
+    _expireDateController.dispose();
+    super.dispose();
+  }
+
+  Future<void> pickImage(RegisterMode selectedMode, ImageSource source) async {
     final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.camera);
+    final image = await picker.pickImage(source: source);
 
     if (image == null) return;
 
@@ -41,12 +61,147 @@ class _OcrScreenState extends State<OcrScreen> {
     });
   }
 
+  Future<void> pickManualImage() async {
+    final picker = ImagePicker();
+    final image = await picker.pickImage(source: ImageSource.gallery);
+
+    if (image == null) return;
+
+    setState(() {
+      pickedImage = image;
+      showCompleteMessage = false;
+    });
+  }
+
+  void showImageSourceSheet(RegisterMode selectedMode) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                imageSourceTile(
+                  icon: Icons.camera_alt,
+                  title: '사진 촬영',
+                  onTap: () {
+                    Navigator.pop(context);
+                    pickImage(selectedMode, ImageSource.camera);
+                  },
+                ),
+                const SizedBox(height: 8),
+                imageSourceTile(
+                  icon: Icons.photo_library,
+                  title: '앨범에서 선택',
+                  onTap: () {
+                    Navigator.pop(context);
+                    pickImage(selectedMode, ImageSource.gallery);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void resetCamera() {
     setState(() {
       mode = RegisterMode.none;
       pickedImage = null;
       hasScanned = false;
       showCompleteMessage = false;
+    });
+  }
+
+  void openManualForm() {
+    setState(() {
+      mode = RegisterMode.manual;
+      pickedImage = null;
+      hasScanned = false;
+      showCompleteMessage = false;
+    });
+  }
+
+  int calculateDday(String expireDateText) {
+    final expireDate = DateTime.tryParse(expireDateText);
+    if (expireDate == null) return 0;
+
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final expireDateOnly = DateTime(
+      expireDate.year,
+      expireDate.month,
+      expireDate.day,
+    );
+
+    return expireDateOnly.difference(todayOnly).inDays;
+  }
+
+  String emojiForCategory(String category) {
+    switch (category) {
+      case '채소':
+        return '🥬';
+      case '과일':
+        return '🍎';
+      case '육류':
+        return '🥩';
+      case '수산물':
+        return '🐟';
+      case '유제품':
+        return '🥛';
+      case '신선식품':
+        return '🥚';
+      case '가공식품':
+        return '🥫';
+      default:
+        return '🍽️';
+    }
+  }
+
+  Future<void> registerManualIngredient() async {
+    if (!(_manualFormKey.currentState?.validate() ?? false)) return;
+
+    final userId = AuthService.currentUser?.id ?? 'user_1';
+    final expireDate = _expireDateController.text.trim();
+
+    await IngredientService.addIngredient(
+      Ingredient(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        userId: userId,
+        name: _nameController.text.trim(),
+        category: _selectedCategory,
+        emoji: emojiForCategory(_selectedCategory),
+        dday: calculateDday(expireDate),
+        count: int.parse(_countController.text.trim()),
+        expireDate: expireDate,
+        imagePath: pickedImage?.path,
+      ),
+    );
+
+    setState(() {
+      showCompleteMessage = true;
+      _nameController.clear();
+      _countController.text = '1';
+      _expireDateController.clear();
+      _selectedCategory = '채소';
+      pickedImage = null;
+    });
+
+    Timer(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() {
+          showCompleteMessage = false;
+          mode = RegisterMode.none;
+        });
+      }
     });
   }
 
@@ -118,6 +273,7 @@ class _OcrScreenState extends State<OcrScreen> {
   String getTitle() {
     if (mode == RegisterMode.receipt) return '영수증 인식 결과';
     if (mode == RegisterMode.image) return '이미지 인식 결과';
+    if (mode == RegisterMode.manual) return '직접 등록하기';
     return '식재료 등록';
   }
 
@@ -130,6 +286,10 @@ class _OcrScreenState extends State<OcrScreen> {
       return 'Image Recognition 서버에서 식재료를 추측했습니다.';
     }
 
+    if (mode == RegisterMode.manual) {
+      return '식재료 정보를 입력해주세요';
+    }
+
     return '등록 방식을 선택해주세요';
   }
 
@@ -139,10 +299,7 @@ class _OcrScreenState extends State<OcrScreen> {
         children: [
           Text(
             '인식된 항목',
-            style: TextStyle(
-              color: AppColors.textSub,
-              fontSize: 13,
-            ),
+            style: TextStyle(color: AppColors.textSub, fontSize: 13),
           ),
           SizedBox(height: 8),
           Text(
@@ -156,10 +313,7 @@ class _OcrScreenState extends State<OcrScreen> {
             ),
           ),
           SizedBox(height: 8),
-          Text(
-            '분류: 유제품, 신선식품',
-            style: TextStyle(color: AppColors.textSub),
-          ),
+          Text('분류: 유제품, 신선식품', style: TextStyle(color: AppColors.textSub)),
         ],
       );
     }
@@ -168,10 +322,7 @@ class _OcrScreenState extends State<OcrScreen> {
       children: [
         Text(
           '인식된 식재료',
-          style: TextStyle(
-            color: AppColors.textSub,
-            fontSize: 13,
-          ),
+          style: TextStyle(color: AppColors.textSub, fontSize: 13),
         ),
         SizedBox(height: 8),
         Text(
@@ -183,10 +334,7 @@ class _OcrScreenState extends State<OcrScreen> {
           ),
         ),
         SizedBox(height: 8),
-        Text(
-          '분류: 채소',
-          style: TextStyle(color: AppColors.textSub),
-        ),
+        Text('분류: 채소', style: TextStyle(color: AppColors.textSub)),
       ],
     );
   }
@@ -217,7 +365,11 @@ class _OcrScreenState extends State<OcrScreen> {
                 ),
                 Expanded(
                   child: Center(
-                    child: hasScanned ? scannedResultView() : selectModeView(),
+                    child: mode == RegisterMode.manual
+                        ? manualRegisterView()
+                        : hasScanned
+                        ? scannedResultView()
+                        : selectModeView(),
                   ),
                 ),
                 if (hasScanned)
@@ -225,7 +377,7 @@ class _OcrScreenState extends State<OcrScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Column(
                       children: [
-                        cameraButton(() => takePicture(mode)),
+                        imageSourceButtons(),
                         const SizedBox(height: 12),
                         registerButton(),
                       ],
@@ -237,7 +389,10 @@ class _OcrScreenState extends State<OcrScreen> {
             if (showCompleteMessage)
               Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 28,
+                    vertical: 18,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(18),
@@ -273,25 +428,47 @@ class _OcrScreenState extends State<OcrScreen> {
         children: [
           modeButton(
             title: '영수증으로 등록하기',
-            subtitle: '영수증 촬영 → OCR 분석 → 식재료 분류',
             icon: Icons.receipt_long,
-            onTap: () => takePicture(RegisterMode.receipt),
+            onTap: () => showImageSourceSheet(RegisterMode.receipt),
           ),
           const SizedBox(height: 16),
           modeButton(
             title: '이미지로 등록하기',
-            subtitle: '식재료 촬영 → 이미지 인식 → 종류/개수 추측',
             icon: Icons.camera_alt,
-            onTap: () => takePicture(RegisterMode.image),
+            onTap: () => showImageSourceSheet(RegisterMode.image),
+          ),
+          const SizedBox(height: 16),
+          modeButton(
+            title: '직접 등록하기',
+            icon: Icons.edit_note,
+            onTap: openManualForm,
           ),
         ],
       ),
     );
   }
 
+  Widget imageSourceTile({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      onTap: onTap,
+      leading: Icon(icon, color: AppColors.mainGreen),
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: AppColors.textMain,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    );
+  }
+
   Widget modeButton({
     required String title,
-    required String subtitle,
     required IconData icon,
     required VoidCallback onTap,
   }) {
@@ -328,14 +505,6 @@ class _OcrScreenState extends State<OcrScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      color: AppColors.textSub,
-                      fontSize: 12,
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -359,19 +528,17 @@ class _OcrScreenState extends State<OcrScreen> {
           ClipOval(
             child: pickedImage == null
                 ? Container(
-              width: 220,
-              height: 220,
-              color: const Color(0xFFF1F1EF),
-              child: const Center(
-                child: Icon(Icons.image, size: 80),
-              ),
-            )
+                    width: 220,
+                    height: 220,
+                    color: const Color(0xFFF1F1EF),
+                    child: const Center(child: Icon(Icons.image, size: 80)),
+                  )
                 : Image.file(
-              File(pickedImage!.path),
-              width: 220,
-              height: 220,
-              fit: BoxFit.cover,
-            ),
+                    File(pickedImage!.path),
+                    width: 220,
+                    height: 220,
+                    fit: BoxFit.cover,
+                  ),
           ),
           const SizedBox(height: 16),
           getResultText(),
@@ -380,17 +547,259 @@ class _OcrScreenState extends State<OcrScreen> {
     );
   }
 
-  Widget cameraButton(VoidCallback onTap) {
+  Widget manualRegisterView() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Form(
+          key: _manualFormKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              manualTextField(
+                controller: _nameController,
+                label: '식재료 이름',
+                hintText: '예: 양파',
+                icon: Icons.eco,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return '식재료 이름을 입력해주세요';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 14),
+              manualImagePicker(),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                value: _selectedCategory,
+                decoration: inputDecoration(label: '분류', icon: Icons.category),
+                items: _categories
+                    .map(
+                      (category) => DropdownMenuItem(
+                        value: category,
+                        child: Text(category),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() {
+                    _selectedCategory = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 14),
+              manualTextField(
+                controller: _countController,
+                label: '개수',
+                hintText: '예: 2',
+                icon: Icons.numbers,
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  final count = int.tryParse(value?.trim() ?? '');
+                  if (count == null || count <= 0) {
+                    return '1개 이상으로 입력해주세요';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 14),
+              manualTextField(
+                controller: _expireDateController,
+                label: '유통기한',
+                hintText: 'YYYY-MM-DD',
+                icon: Icons.event,
+                readOnly: true,
+                onTap: selectExpireDate,
+                validator: (value) {
+                  if (DateTime.tryParse(value?.trim() ?? '') == null) {
+                    return '유통기한을 선택해주세요';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+              registerManualButton(),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: resetCamera,
+                child: const Text(
+                  '등록 방식 다시 선택',
+                  style: TextStyle(color: AppColors.textSub),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> selectExpireDate() async {
+    final now = DateTime.now();
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 5),
+    );
+
+    if (pickedDate == null) return;
+
+    _expireDateController.text =
+        '${pickedDate.year.toString().padLeft(4, '0')}-'
+        '${pickedDate.month.toString().padLeft(2, '0')}-'
+        '${pickedDate.day.toString().padLeft(2, '0')}';
+  }
+
+  InputDecoration inputDecoration({
+    required String label,
+    required IconData icon,
+    String? hintText,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hintText,
+      prefixIcon: Icon(icon, color: AppColors.mainGreen),
+      filled: true,
+      fillColor: const Color(0xFFF7F8F5),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: AppColors.mainGreen),
+      ),
+    );
+  }
+
+  Widget manualTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    String? hintText,
+    TextInputType? keyboardType,
+    bool readOnly = false,
+    VoidCallback? onTap,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      readOnly: readOnly,
+      onTap: onTap,
+      validator: validator,
+      decoration: inputDecoration(label: label, icon: icon, hintText: hintText),
+    );
+  }
+
+  Widget manualImagePicker() {
+    return GestureDetector(
+      onTap: pickManualImage,
+      child: Container(
+        width: double.infinity,
+        height: 130,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7F8F5),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: pickedImage == null
+            ? const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.photo_library, color: AppColors.mainGreen),
+                  SizedBox(height: 8),
+                  Text(
+                    '앨범에서 사진 선택',
+                    style: TextStyle(
+                      color: AppColors.textMain,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '선택 사항',
+                    style: TextStyle(color: AppColors.textSub, fontSize: 12),
+                  ),
+                ],
+              )
+            : Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.file(
+                      File(pickedImage!.path),
+                      width: double.infinity,
+                      height: 130,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          pickedImage = null;
+                        });
+                      },
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close, size: 18),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget imageSourceButtons() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        imageSourceCircleButton(
+          icon: Icons.camera_alt,
+          onTap: () => pickImage(mode, ImageSource.camera),
+        ),
+        const SizedBox(width: 18),
+        imageSourceCircleButton(
+          icon: Icons.photo_library,
+          onTap: () => pickImage(mode, ImageSource.gallery),
+        ),
+      ],
+    );
+  }
+
+  Widget imageSourceCircleButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 74,
-        height: 74,
+        width: 68,
+        height: 68,
         decoration: const BoxDecoration(
           color: Colors.white,
           shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.camera_alt, size: 34),
+        child: Icon(icon, size: 32),
       ),
     );
   }
@@ -408,10 +817,27 @@ class _OcrScreenState extends State<OcrScreen> {
         child: const Center(
           child: Text(
             '식재료 등록하기',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget registerManualButton() {
+    return GestureDetector(
+      onTap: registerManualIngredient,
+      child: Container(
+        width: double.infinity,
+        height: 52,
+        decoration: BoxDecoration(
+          color: AppColors.mainGreen,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Center(
+          child: Text(
+            '직접 등록하기',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
         ),
       ),

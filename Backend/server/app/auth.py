@@ -38,6 +38,9 @@ def get_current_user(
     creds: HTTPAuthorizationCredentials = Depends(_bearer),
 ) -> CurrentUser:
     token = creds.credentials
+    if os.getenv("DEV_AUTH_ENABLED") == "1" and token == "dev-token":
+        return CurrentUser(uid="user_1", email="dev@example.com", name="개발자")
+
     try:
         decoded = fb_auth.verify_id_token(token)
     except Exception as e:
