@@ -23,7 +23,6 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
   late TextEditingController nameController;
   late TextEditingController categoryController;
   late TextEditingController countController;
-  late TextEditingController ddayController;
   late TextEditingController expireDateController;
 
   @override
@@ -33,21 +32,25 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
     nameController = TextEditingController(text: ingredient.name);
     categoryController = TextEditingController(text: ingredient.category);
     countController = TextEditingController(text: ingredient.count.toString());
-    ddayController = TextEditingController(text: ingredient.dday.toString());
-    expireDateController = TextEditingController(text: ingredient.expireDate);
+    // 모델의 expireDateString (YYYY-MM-DD) 사용
+    expireDateController = TextEditingController(text: ingredient.expireDateString);
   }
 
   Future<void> saveIngredient() async {
+    // 수정한 데이터를 바탕으로 새로운 객체 생성
     final updatedIngredient = Ingredient(
       id: ingredient.id,
-      userId: ingredient.userId,
+      fridgeId: ingredient.fridgeId,
       name: nameController.text.trim(),
       category: categoryController.text.trim(),
       emoji: ingredient.emoji,
-      dday: int.tryParse(ddayController.text.trim()) ?? ingredient.dday,
       count: int.tryParse(countController.text.trim()) ?? ingredient.count,
-      expireDate: expireDateController.text.trim(),
-      imagePath: ingredient.imagePath,
+      expireDate: DateTime.tryParse(expireDateController.text.trim()) ?? ingredient.expireDate,
+      imageURL: ingredient.imageURL,
+      addedBy: ingredient.addedBy,
+      addedVia: ingredient.addedVia,
+      createdAt: ingredient.createdAt,
+      updatedAt: DateTime.now(), // 수정 시각 갱신
     );
 
     await IngredientService.updateIngredient(updatedIngredient);
@@ -73,29 +76,32 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
   }
 
   Widget imageView() {
-    if (ingredient.imagePath == null) {
+    // imageURL이 없으면 에모지 표시
+    if (ingredient.imageURL == null || ingredient.imageURL!.isEmpty) {
       return Container(
         width: 180,
         height: 180,
         decoration: BoxDecoration(
-          color: AppColors.mainGreen.withOpacity(0.15),
+          color: AppColors.mainGreen.withValues(alpha: 0.15),
           shape: BoxShape.circle,
         ),
         child: Center(
           child: Text(
-            ingredient.emoji,
+            ingredient.emoji ?? '❓',
             style: const TextStyle(fontSize: 80),
           ),
         ),
       );
     }
 
+    // 로컬 파일 경로인 경우 처리 (필요시 NetworkImage와 분기 로직 추가 가능)
     return ClipOval(
       child: Image.file(
-        File(ingredient.imagePath!),
+        File(ingredient.imageURL!),
         width: 180,
         height: 180,
         fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 80),
       ),
     );
   }
@@ -168,7 +174,7 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
         const SizedBox(height: 24),
         infoText('분류', ingredient.category),
         infoText('개수', '${ingredient.count}개'),
-        infoText('유통기한', ingredient.expireDate),
+        infoText('유통기한', ingredient.expireDateString),
         infoText('남은 기간', 'D-${ingredient.dday}'),
       ],
     );
@@ -182,8 +188,7 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
         inputField('식재료 이름', nameController),
         inputField('분류', categoryController),
         inputField('개수', countController),
-        inputField('D-day', ddayController),
-        inputField('유통기한', expireDateController),
+        inputField('유통기한(YYYY-MM-DD)', expireDateController),
       ],
     );
   }
@@ -197,6 +202,11 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
               onTap: () {
                 setState(() {
                   isEditing = false;
+                  // 원복
+                  nameController.text = ingredient.name;
+                  categoryController.text = ingredient.category;
+                  countController.text = ingredient.count.toString();
+                  expireDateController.text = ingredient.expireDateString;
                 });
               },
               child: Container(
