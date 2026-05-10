@@ -3,7 +3,7 @@
 단일 호출 아키텍처:
 - 이미지 → Gemini Vision → response_schema 강제 JSON
 - kind 필드로 영수증/실물 분기, 동일 응답에 양쪽 필드 포함
-- 양쪽 모두 items[] 통일 (category/name/quantity/price). object 분기에선 price="".
+- 양쪽 모두 items[] 통일 (category/name/quantity). 영수증의 가격 정보는 추출 대상 아님.
 
 env vars:
 - GEMINI_API_KEY (필수)
@@ -12,11 +12,15 @@ env vars:
 from __future__ import annotations
 
 import os
+import re
 from typing import Literal, Optional
 
 from google import genai
 from google.genai import types
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+
+_LEADING_DIGITS = re.compile(r"\d+")
 
 
 DEFAULT_MODEL = "gemini-3.1-flash-lite"
@@ -54,7 +58,15 @@ class Item(BaseModel):
     category: Category
     name: str
     quantity: str
-    price: str  # 영수증이면 숫자 문자열, 실물 분기에선 ""
+
+    @field_validator("quantity")
+    @classmethod
+    def _quantity_first_run(cls, v: str) -> str:
+        # 첫 digit run만. "1개"→"1", "약간"→"". "1박스에 5개"같은 경우엔 앞쪽(1) 우선.
+        if not v:
+            return ""
+        m = _LEADING_DIGITS.search(v)
+        return m.group(0) if m else ""
 
 
 class OcrResponse(BaseModel):
@@ -69,9 +81,8 @@ _PROMPT = """You receive a single image. Classify and extract structured info as
 
 [Branch 1] Korean grocery RECEIPT (printed text/POS receipt):
 - kind = "receipt"
-- items: each product line → {category, name (Korean verbatim), quantity, price}
+- items: each product line → {category, name (Korean verbatim), quantity}
 - quantity: digits only as string. Examples: "1", "2", "12". NEVER include unit suffix (개, 단, 박스, etc.). "" if not visible.
-- price: digits only as string, NO commas. Examples: "1680", "14720". "" if not visible.
 - metadata: store name, address, datetime, POS/card info, totals, tax, payment, barcodes, headers ("상품명", "단가" etc.)
 - Categories (use ONLY these 12 Korean labels): 야채, 과일, 육류, 수산물, 유제품, 달걀, 곡물/면, 조미료/소스, 음료, 냉동식품, 간식/과자, 기타
 - Minor OCR typos can be corrected based on grocery context (e.g., "샘칼국수" → "생칼국수"). Preserve unambiguous text verbatim.
@@ -85,16 +96,15 @@ _PROMPT = """You receive a single image. Classify and extract structured info as
 
 [Branch 2] Real-world PHOTO of food/ingredients/products:
 - kind = "object"
-- items: each visible food/ingredient → {category, name (Korean), quantity, price=""}
+- items: each visible food/ingredient → {category, name (Korean), quantity}
 - quantity: digits only as string counted from the image. Examples: "1", "2", "5". NEVER include unit suffix (개, 단, 박스, etc.). "" only when truly uncountable.
-- price: always "" for object branch.
 - Skip non-food items entirely (do not list household goods, utensils, packaging)
 - metadata = null (only used for receipt)
 - name 가능한 한국어 단일 식재료명 (사과, 양파, 브로콜리, 방울토마토 등). 카탈로그 사진처럼 종류가 섞여있으면 종류별로 한 줄씩.
 
 [Strict rules]
 - Korean text verbatim (after typo correction for receipts), no translation
-- price/quantity = "" (empty string) when not visible/applicable
+- quantity = "" (empty string) when not visible/applicable
 - Output JSON only, no commentary
 - All items in `items` field. metadata only for receipt.
 """
