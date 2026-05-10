@@ -1,22 +1,18 @@
-"""OCR 서비스 계층.
+"""OCR 서비스 계층 (Gemini 단일 호출 버전).
 
-- describe:      실물 이미지 → 한국어 사물 설명 (Mac Mini Ollama, vision LLM)
-- process_image: 분류 후 분기. 영수증은 PaddleOCR(데스크탑) → vision LLM 검수,
-                 실물은 vision LLM(Mac Mini Ollama).
+이미지 1장 → Gemini Vision → 분류 + 추출 JSON → ProcessResult.
+영수증/실물 둘 다 items[]로 통일된 구조 반환.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
-from .classifier import SourceKind, classify
-from .client import get_refine_model, get_vision_model
-from .object_vision import describe
-from .paddle_ocr import extract_text as paddle_extract_text
-from .refiner import is_enabled as refine_enabled, refine as refine_text
+from .gemini import call_gemini, get_model
 
 
-_RECEIPT_BASE_MODEL = "paddleocr-korean"
+SourceKind = Literal["receipt", "object"]
 
 
 @dataclass
@@ -26,29 +22,19 @@ class ProcessResult:
     model: str
 
 
-def _receipt_model_name() -> str:
-    if refine_enabled():
-        return f"{_RECEIPT_BASE_MODEL}+{get_refine_model()}-classify"
-    return _RECEIPT_BASE_MODEL
-
-
 async def process_image(
     image_bytes: bytes,
     prompt: Optional[str] = None,
 ) -> ProcessResult:
-    kind = await classify(image_bytes)
-    if kind == "receipt":
-        text = await paddle_extract_text(image_bytes)
-        if refine_enabled():
-            text = await refine_text(text)
-        return ProcessResult(
-            source_kind="receipt",
-            text=text,
-            model=_receipt_model_name(),
-        )
-    text = await describe(image_bytes, prompt=prompt)
+    response = await call_gemini(image_bytes)
+
+    payload = {"items": [item.model_dump() for item in response.items]}
+    if response.kind == "receipt":
+        payload["metadata"] = response.metadata or []
+
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
     return ProcessResult(
-        source_kind="object",
+        source_kind=response.kind,
         text=text,
-        model=get_vision_model(),
+        model=get_model(),
     )

@@ -9,7 +9,8 @@
 - Backend/ocr/samples/ 에 위 명명 규칙대로 이미지 배치
 - 별도 셸에서 uvicorn 먼저 띄워둘 것:
     cd Backend
-    $env:GEMINI_API_KEY = "AIza..."
+    $env:OLLAMA_BASE_URL     = "http://119.66.214.191:31342"
+    $env:OLLAMA_VISION_MODEL = "qwen2.5vl:7b"
     uvicorn ocr.main:app --reload --port 8081
 
 [사용 예 — Backend/ 디렉터리에서]
@@ -28,7 +29,7 @@ from typing import Optional
 import httpx
 
 
-_SAMPLES_DIR = Path(__file__).resolve().parent / "samples"
+_SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
 _SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
 _DEFAULT_SERVER = "http://localhost:8081"
 _REQUEST_TIMEOUT = 700.0

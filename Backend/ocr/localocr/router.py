@@ -1,11 +1,13 @@
-"""이미지 처리 엔드포인트 (Gemini 단일 호출).
+"""이미지 처리 엔드포인트.
 
-업로드된 이미지를 Gemini로 보내 영수증/실물을 동시에 분류·추출한다.
+업로드된 이미지를 분류해 영수증이면 OCR(PaddleOCR, 데스크탑 로컬), 실물
+사진이면 사물 인식(vision LLM, Mac Mini Ollama)으로 자동 분기한다.
 """
 from __future__ import annotations
 
 from typing import Literal, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from PIL import UnidentifiedImageError
 from pydantic import BaseModel
@@ -38,15 +40,16 @@ class OcrTextResponse(BaseModel):
 @router.post(
     "/text",
     response_model=OcrTextResponse,
-    summary="Gemini Vision으로 영수증 추출 또는 실물 사물 설명",
+    summary="이미지 분류 후 OCR 또는 사물 인식",
     description=(
-        "이미지를 Gemini Vision에 1회 호출 → 영수증이면 카테고리 분류된 JSON 텍스트, "
-        "실물 사진이면 한국어 사물 설명을 반환한다. response_schema로 카테고리 enum 강제."
+        "이미지를 비전 LLM으로 분류 → "
+        "영수증이면 PaddleOCR(데스크탑 로컬, 한국어 모델)로 텍스트 추출, "
+        "실물 사진이면 OLLAMA_VISION_MODEL(기본 qwen2.5vl:7b)로 한국어 사물 설명을 반환한다."
     ),
 )
 async def ocr_text(
     file: UploadFile = File(..., description="처리할 이미지"),
-    prompt: Optional[str] = Form(None, description="(legacy, 현 구현에선 무시)"),
+    prompt: Optional[str] = Form(None, description="커스텀 프롬프트 (옵션, 분기 후 단계에 적용)"),
     user: CurrentUser = Depends(get_current_user),
 ) -> OcrTextResponse:
     if file.content_type not in _ALLOWED_TYPES:
@@ -77,10 +80,20 @@ async def ocr_text(
 
     try:
         result = await process_image(image_bytes, prompt)
-    except RuntimeError as exc:
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Ollama request timed out",
+        ) from exc
+    except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Gemini API error: {exc}",
+            detail=f"Ollama returned {exc.response.status_code}: {exc.response.text[:200]}",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Ollama unreachable: {exc}",
         ) from exc
 
     return OcrTextResponse(
