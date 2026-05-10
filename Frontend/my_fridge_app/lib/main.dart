@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart'; // 추가
-import 'firebase_options.dart'; // FlutterFire CLI로 생성된 파일
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
 
 void main() async {
-
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(
@@ -37,7 +36,9 @@ class MyFridgeApp extends StatelessWidget {
             );
           }
 
-          return snapshot.data == true ? const HomeScreen() : const LoginScreen();
+          return snapshot.data == true
+              ? const HomeScreen()
+              : const LoginScreen();
         },
       ),
     );
