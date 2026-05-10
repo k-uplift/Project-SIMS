@@ -12,12 +12,10 @@ from typing import Optional
 from .classifier import SourceKind, classify
 from .client import generate_with_image, get_ocr_model, get_vision_model
 from .object_vision import describe
+from .preprocess import preprocess_for_ocr
 
 
-_DEFAULT_OCR_PROMPT = (
-    "다음 이미지에서 보이는 모든 텍스트를 정확히 그대로 추출해 주세요. "
-    "원문의 줄바꿈과 공백 구조를 최대한 보존하고, 추가 설명이나 해석은 포함하지 마세요."
-)
+_DEFAULT_OCR_PROMPT = "<|grounding|>Convert the document to markdown."
 
 
 async def extract_text(
@@ -44,7 +42,8 @@ async def process_image(
 ) -> ProcessResult:
     kind = await classify(image_bytes)
     if kind == "receipt":
-        text = await extract_text(image_bytes, prompt=prompt)
+        ocr_bytes = preprocess_for_ocr(image_bytes)
+        text = await extract_text(ocr_bytes, prompt=prompt)
         return ProcessResult(source_kind="receipt", text=text, model=get_ocr_model())
     text = await describe(image_bytes, prompt=prompt)
     return ProcessResult(source_kind="object", text=text, model=get_vision_model())

@@ -9,9 +9,11 @@ from typing import Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from PIL import UnidentifiedImageError
 from pydantic import BaseModel
 
 from .auth import CurrentUser, get_current_user
+from .preprocess import preprocess_common
 from .service import process_image
 
 
@@ -67,6 +69,14 @@ async def ocr_text(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Empty image upload",
         )
+
+    try:
+        image_bytes = preprocess_common(image_bytes)
+    except (UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Image could not be decoded: {exc}",
+        ) from exc
 
     try:
         result = await process_image(image_bytes, prompt)

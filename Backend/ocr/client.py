@@ -9,6 +9,7 @@ Mac Mini 등 외부 호스트에서 띄운 Ollama 서버에 base64 이미지를 
 from __future__ import annotations
 
 import base64
+import json
 import os
 from typing import Optional
 
@@ -62,4 +63,16 @@ async def generate_with_image(
         resp = await client.post(url, json=payload)
         resp.raise_for_status()
         data = resp.json()
-    return data.get("response", "")
+    # TEMP DEBUG: 영수증 OCR 빈 응답 진단용 — 디버깅 끝나면 제거
+    response_field = data.get("response") or ""
+    print(
+        f"[ollama:{model}] keys={list(data.keys())} "
+        f"response_len={len(response_field)} "
+        f"done_reason={data.get('done_reason')!r}",
+        flush=True,
+    )
+    print(
+        f"[ollama:{model}] raw={json.dumps(data, ensure_ascii=False)[:1500]}",
+        flush=True,
+    )
+    return response_field
