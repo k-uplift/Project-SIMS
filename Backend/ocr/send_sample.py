@@ -71,7 +71,7 @@ def _print_result(path: Path, body: dict) -> bool:
     expected = _expected_from_name(path.name)
     kind = body.get("source_kind")
     model = body.get("model")
-    text = body.get("text") or ""
+    items = body.get("items") or []
 
     ok = True
     mark = ""
@@ -80,10 +80,9 @@ def _print_result(path: Path, body: dict) -> bool:
         mark = " [OK]" if ok else f" [MISS: expected {expected}]"
 
     print(f"{path.name}{mark}")
-    print(f"  kind={kind}  model={model}")
-    # TEMP DEBUG: 빈 응답 진단용 — 디버깅 끝나면 snippet으로 되돌릴 것
-    print(f"  text (len={len(text)}, repr below):")
-    print(f"  {text!r}")
+    print(f"  kind={kind}  model={model}  items={len(items)}")
+    for it in items:
+        print(f"    - [{it.get('category')}] {it.get('name')} x{it.get('quantity') or '?'}")
     print()
     return ok
 

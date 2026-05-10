@@ -2,8 +2,8 @@
 
 단일 호출 아키텍처:
 - 이미지 → Gemini Vision → response_schema 강제 JSON
-- kind 필드로 영수증/실물 분기, 동일 응답에 양쪽 필드 포함
-- 양쪽 모두 items[] 통일 (category/name/quantity). 영수증의 가격 정보는 추출 대상 아님.
+- kind 필드로 영수증/실물 분기, 응답은 양쪽 모두 {kind, items[]}
+- items 필드 통일: {category, name, quantity}. 가격·매장 정보 등은 추출 대상 아님.
 
 env vars:
 - GEMINI_API_KEY (필수)
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Literal, Optional
+from typing import Literal
 
 from google import genai
 from google.genai import types
@@ -55,6 +55,9 @@ Category = Literal[
 
 
 class Item(BaseModel):
+    # NOTE: Field(examples=...) 추가 금지 — 이 모델은 Gemini response_schema 로
+    # 그대로 직렬화되며, Gemini Schema 가 examples 키 허용 안 함 (extra_forbidden).
+    # API 노출용 description/examples 는 router.py 의 OcrItem 에 둘 것.
     category: Category
     name: str
     quantity: str
@@ -70,20 +73,27 @@ class Item(BaseModel):
 
 
 class OcrResponse(BaseModel):
-    """단일 호출 응답. kind 에 따라 metadata 사용 여부가 달라진다."""
+    """단일 호출 응답. kind 로 분기 (receipt/object).
+
+    metadata 는 영수증의 비-품목 텍스트 흡수용 (바코드·합계·매장정보 등이
+    items 로 새지 않도록 막는 sink). required 로 둬서 Gemini가 항상 채우도록
+    강제 — Optional 이면 빈 채로 skip 하고 items 에 침범하는 경향 발견됨.
+    사용자에게 노출되지 않으며 디버깅·검증용.
+    """
 
     kind: Literal["receipt", "object"]
     items: list[Item]
-    metadata: Optional[list[str]] = None
+    metadata: list[str]
 
 
 _PROMPT = """You receive a single image. Classify and extract structured info as JSON.
 
 [Branch 1] Korean grocery RECEIPT (printed text/POS receipt):
 - kind = "receipt"
-- items: each product line → {category, name (Korean verbatim), quantity}
+- items: ONLY actual product lines → {category, name (Korean verbatim), quantity}
 - quantity: digits only as string. Examples: "1", "2", "12". NEVER include unit suffix (개, 단, 박스, etc.). "" if not visible.
-- metadata: store name, address, datetime, POS/card info, totals, tax, payment, barcodes, headers ("상품명", "단가" etc.)
+- metadata: EVERYTHING that is not a product — store name, address, phone, datetime, POS/cashier IDs, card info, totals, tax (면세/과세/부가세), payment, **barcodes (any digit-only string of length 8+)**, headers like "상품명/단가/수량", footer messages, etc. If unsure whether a line is a product, put it in metadata. metadata MUST be a non-empty list for receipts (every Korean receipt has store info / dates / totals — never return empty).
+- Concrete anti-pattern: a line like "8801005638654" or "8807500007063" → metadata, NEVER items. If a barcode appears between products, attach it to metadata, do not create a separate item for it.
 - Categories (use ONLY these 12 Korean labels): 야채, 과일, 육류, 수산물, 유제품, 달걀, 곡물/면, 조미료/소스, 음료, 냉동식품, 간식/과자, 기타
 - Minor OCR typos can be corrected based on grocery context (e.g., "샘칼국수" → "생칼국수"). Preserve unambiguous text verbatim.
 - Receipt-specific item rules:
@@ -99,14 +109,13 @@ _PROMPT = """You receive a single image. Classify and extract structured info as
 - items: each visible food/ingredient → {category, name (Korean), quantity}
 - quantity: digits only as string counted from the image. Examples: "1", "2", "5". NEVER include unit suffix (개, 단, 박스, etc.). "" only when truly uncountable.
 - Skip non-food items entirely (do not list household goods, utensils, packaging)
-- metadata = null (only used for receipt)
+- metadata = [] (empty list for object branch — sink not needed)
 - name 가능한 한국어 단일 식재료명 (사과, 양파, 브로콜리, 방울토마토 등). 카탈로그 사진처럼 종류가 섞여있으면 종류별로 한 줄씩.
 
 [Strict rules]
 - Korean text verbatim (after typo correction for receipts), no translation
 - quantity = "" (empty string) when not visible/applicable
 - Output JSON only, no commentary
-- All items in `items` field. metadata only for receipt.
 """
 
 
