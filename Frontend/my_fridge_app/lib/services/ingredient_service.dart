@@ -9,15 +9,17 @@ import 'storage_service.dart';
 
 /// UI 호환을 위한 wrapper. 내부적으로 IngredientRepository 호출.
 ///
-/// 기존 코드는 userId 한 명 기준으로 동작했지만, 실제 데이터 모델은 fridgeId
-/// 단위로 동작한다. 사용자가 속한 첫 번째 fridgeId를 자동으로 사용.
+/// 메인 냉장고:
+/// - users/{uid}.primaryFridgeId 가 있고 fridgeIds에 포함되면 그걸 사용.
+/// - 없으면 fridgeIds.first.
+/// - 둘 다 없으면 새로 생성.
 class IngredientService {
   IngredientService._();
 
-  /// 캐시된 fridgeId. 한 번 조회하면 세션 동안 재사용.
+  /// 캐시된 fridgeId. 메인 냉장고 변경 시 clearCache() 호출 필요.
   static String? _cachedFridgeId;
 
-  /// 현재 사용자의 첫 번째 냉장고 ID. 없으면 새로 생성.
+  /// 현재 사용자의 메인 냉장고 ID. 없으면 새로 생성.
   static Future<String> currentFridgeId() async {
     if (_cachedFridgeId != null) return _cachedFridgeId!;
 
@@ -25,8 +27,9 @@ class IngredientService {
     if (uid == null) throw StateError('로그인이 필요합니다.');
 
     final profile = await UserRepository.instance.get(uid);
-    if (profile != null && profile.fridgeIds.isNotEmpty) {
-      _cachedFridgeId = profile.fridgeIds.first;
+    final primary = profile?.effectivePrimaryFridgeId;
+    if (primary != null) {
+      _cachedFridgeId = primary;
       return _cachedFridgeId!;
     }
 
@@ -42,7 +45,7 @@ class IngredientService {
     return _cachedFridgeId!;
   }
 
-  /// 로그아웃 시 호출 (다음 로그인 사용자가 다른 사람일 수 있음).
+  /// 메인 냉장고 변경 시 / 로그아웃 시 호출.
   static void clearCache() {
     _cachedFridgeId = null;
   }

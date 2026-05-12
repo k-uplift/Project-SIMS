@@ -52,7 +52,7 @@ class AuthService {
       // 기본 냉장고 1개 생성 (멤버=본인)
       await FridgeRepository.instance.create(
         ownerUid: user.uid,
-        name: '내 냉장고',
+        name: '$nickname의 냉장고',
       );
 
       return null;

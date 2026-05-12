@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/ingredient.dart';
+import '../services/fridge_service.dart';
 import '../services/ingredient_service.dart';
 import '../services/storage_service.dart';
 import '../theme/app_colors.dart';
@@ -17,14 +18,38 @@ class IngredientListScreen extends StatefulWidget {
 class _IngredientListScreenState extends State<IngredientListScreen> {
   Future<List<Ingredient>>? ingredientFuture;
 
+  // 냉장고 선택용 상태
+  List<FridgeView> myFridges = [];
+  String? currentFridgeId;
+  bool loadingFridges = true;
+
   @override
   void initState() {
     super.initState();
-    loadIngredients();
+    bootstrap();
   }
 
-  void loadIngredients() {
-    ingredientFuture = IngredientService.getIngredients();
+  /// 냉장고 목록 + 현재 메인 + 식재료를 같이 로드.
+  Future<void> bootstrap() async {
+    final fridges = await FridgeService.myFridges();
+    final current = await FridgeService.currentFridgeId();
+    if (!mounted) return;
+    setState(() {
+      myFridges = fridges;
+      currentFridgeId = current;
+      loadingFridges = false;
+      ingredientFuture = IngredientService.getIngredients();
+    });
+  }
+
+  Future<void> selectFridge(FridgeView view) async {
+    if (view.id == currentFridgeId) return;
+    await FridgeService.setPrimaryFridge(view.id);
+    if (!mounted) return;
+    setState(() {
+      currentFridgeId = view.id;
+      ingredientFuture = IngredientService.getIngredients();
+    });
   }
 
   Color ddayColor(int dday) {
@@ -36,7 +61,6 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
   Widget imageView(Ingredient item) {
     final url = item.imageURL;
 
-    // 이미지 없음 → 에모지 폴백
     if (url == null || url.isEmpty) {
       return Container(
         width: 54,
@@ -54,7 +78,6 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
       );
     }
 
-    // URL인지 로컬 경로인지 분기 (기존 로컬 경로 데이터와의 호환)
     final imageProvider = StorageService.isRemoteUrl(url)
         ? NetworkImage(url) as ImageProvider
         : FileImage(File(url));
@@ -109,10 +132,9 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
       ),
     );
 
-    // 상세 화면에서 돌아왔을 때 목록 새로고침
     if (mounted) {
       setState(() {
-        loadIngredients();
+        ingredientFuture = IngredientService.getIngredients();
       });
     }
   }
@@ -166,6 +188,158 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
     );
   }
 
+  /// 제목 영역: 냉장고가 1개면 그냥 이름만, 2개 이상이면 드롭다운으로.
+  Widget headerTitle() {
+    if (loadingFridges) {
+      return const Text(
+        '식재료 리스트',
+        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+      );
+    }
+
+    if (myFridges.isEmpty) {
+      return const Text(
+        '식재료 리스트',
+        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+      );
+    }
+
+    final current = myFridges.firstWhere(
+          (v) => v.id == currentFridgeId,
+      orElse: () => myFridges.first,
+    );
+
+    if (myFridges.length <= 1) {
+      return Text(
+        current.displayName,
+        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+      );
+    }
+
+    return InkWell(
+      onTap: showFridgePicker,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                current.displayName,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.expand_more, size: 26),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void showFridgePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '냉장고 선택',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...myFridges.map((view) {
+                  final selected = view.id == currentFridgeId;
+                  return InkWell(
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      selectFridge(view);
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppColors.mainGreen.withValues(alpha: 0.1)
+                            : const Color(0xFFF5F5F2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: selected
+                              ? AppColors.mainGreen
+                              : Colors.transparent,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            selected
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked,
+                            color: selected
+                                ? AppColors.mainGreen
+                                : AppColors.textSub,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  view.displayName,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: selected
+                                        ? AppColors.deepGreen
+                                        : AppColors.textMain,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${view.memberCount}명 사용 중',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSub,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -177,26 +351,10 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
           child: FutureBuilder<List<Ingredient>>(
             future: ingredientFuture,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              if (snapshot.hasError) {
-                return Center(child: Text('오류가 발생했습니다: ${snapshot.error}'));
-              }
-
-              final ingredients = snapshot.data ?? [];
-
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '식재료 리스트',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  headerTitle(),
                   const SizedBox(height: 20),
                   Row(
                     children: [
@@ -209,32 +367,48 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
                   ),
                   const SizedBox(height: 20),
                   Expanded(
-                    child: ingredients.isEmpty
-                        ? const Center(
-                      child: Text(
-                        '등록된 식재료가 없습니다.',
-                        style: TextStyle(color: AppColors.textSub),
-                      ),
-                    )
-                        : RefreshIndicator(
-                      onRefresh: () async {
-                        setState(() {
-                          loadIngredients();
-                        });
-                      },
-                      child: ListView.builder(
-                        itemCount: ingredients.length,
-                        itemBuilder: (context, index) {
-                          return ingredientCard(ingredients[index]);
-                        },
-                      ),
-                    ),
+                    child: _buildListBody(snapshot),
                   ),
                 ],
               );
             },
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildListBody(AsyncSnapshot<List<Ingredient>> snapshot) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (snapshot.hasError) {
+      return Center(child: Text('오류가 발생했습니다: ${snapshot.error}'));
+    }
+
+    final ingredients = snapshot.data ?? [];
+
+    if (ingredients.isEmpty) {
+      return const Center(
+        child: Text(
+          '등록된 식재료가 없습니다.',
+          style: TextStyle(color: AppColors.textSub),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        setState(() {
+          ingredientFuture = IngredientService.getIngredients();
+        });
+      },
+      child: ListView.builder(
+        itemCount: ingredients.length,
+        itemBuilder: (context, index) {
+          return ingredientCard(ingredients[index]);
+        },
       ),
     );
   }

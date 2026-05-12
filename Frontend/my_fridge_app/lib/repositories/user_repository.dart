@@ -71,4 +71,12 @@ class UserRepository {
       'updatedAt': Timestamp.fromDate(DateTime.now()),
     });
   }
+
+  /// 메인 냉장고 설정. null로 호출하면 필드 자체 삭제.
+  Future<void> setPrimaryFridge(String uid, String? fridgeId) async {
+    await _users.doc(uid).update({
+      'primaryFridgeId': fridgeId ?? FieldValue.delete(),
+      'updatedAt': Timestamp.fromDate(DateTime.now()),
+    });
+  }
 }
