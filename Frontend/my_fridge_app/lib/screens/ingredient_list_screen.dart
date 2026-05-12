@@ -178,16 +178,6 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      categoryChip('전체', true),
-                      const SizedBox(width: 8),
-                      categoryChip('냉장', false),
-                      const SizedBox(width: 8),
-                      categoryChip('냉동', false),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
                   Expanded(
                     child: ingredients.isEmpty
                         ? const Center(

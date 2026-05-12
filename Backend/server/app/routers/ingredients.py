@@ -1,4 +1,8 @@
+import json
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import List
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -14,10 +18,38 @@ from app.schemas.ingredients import (
 
 router = APIRouter(tags=["ingredients"])
 
+_DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+_DATA_FILE = _DATA_DIR / "ingredients.json"
+
 _NOT_IMPL = HTTPException(
     status_code=status.HTTP_501_NOT_IMPLEMENTED,
     detail="Not implemented yet (Week 2)",
 )
+
+
+def _load_ingredients() -> List[Ingredient]:
+    if not _DATA_FILE.exists():
+        return []
+
+    with _DATA_FILE.open("r", encoding="utf-8") as f:
+        raw_items = json.load(f)
+
+    return [Ingredient(**item) for item in raw_items]
+
+
+def _save_ingredients(items: List[Ingredient]) -> None:
+    _DATA_DIR.mkdir(parents=True, exist_ok=True)
+    payload = [
+        item.model_dump(mode="json", by_alias=True)
+        for item in items
+    ]
+
+    with _DATA_FILE.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 @router.get(
@@ -29,7 +61,13 @@ def list_ingredients(
     fridge_id: str,
     user: CurrentUser = Depends(get_current_user),
 ):
-    raise _NOT_IMPL
+    items = [
+        item
+        for item in _load_ingredients()
+        if item.fridge_id == fridge_id and item.added_by == user.uid
+    ]
+
+    return sorted(items, key=lambda item: item.expire_date)
 
 
 @router.post(
@@ -43,7 +81,22 @@ def create_ingredient(
     body: IngredientCreate,
     user: CurrentUser = Depends(get_current_user),
 ):
-    raise _NOT_IMPL
+    items = _load_ingredients()
+    now = _now()
+    ingredient = Ingredient(
+        id=str(uuid4()),
+        fridge_id=fridge_id,
+        added_by=user.uid,
+        added_via=body.added_via,
+        created_at=now,
+        updated_at=now,
+        **body.model_dump(),
+    )
+
+    items.append(ingredient)
+    _save_ingredients(items)
+
+    return ingredient
 
 
 @router.patch(
@@ -57,7 +110,33 @@ def update_ingredient(
     body: IngredientUpdate,
     user: CurrentUser = Depends(get_current_user),
 ):
-    raise _NOT_IMPL
+    items = _load_ingredients()
+    update_data = body.model_dump(exclude_unset=True)
+
+    for index, item in enumerate(items):
+        if item.id != ingredient_id:
+            continue
+
+        if item.fridge_id != fridge_id or item.added_by != user.uid:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Ingredient not found",
+            )
+
+        updated = item.model_copy(
+            update={
+                **update_data,
+                "updated_at": _now(),
+            }
+        )
+        items[index] = updated
+        _save_ingredients(items)
+        return updated
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Ingredient not found",
+    )
 
 
 @router.delete(
@@ -70,7 +149,24 @@ def delete_ingredient(
     ingredient_id: str,
     user: CurrentUser = Depends(get_current_user),
 ):
-    raise _NOT_IMPL
+    items = _load_ingredients()
+    kept_items = [
+        item
+        for item in items
+        if not (
+            item.id == ingredient_id
+            and item.fridge_id == fridge_id
+            and item.added_by == user.uid
+        )
+    ]
+
+    if len(kept_items) == len(items):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ingredient not found",
+        )
+
+    _save_ingredients(kept_items)
 
 
 @router.post(

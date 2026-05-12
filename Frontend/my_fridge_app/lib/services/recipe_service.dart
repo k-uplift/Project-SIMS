@@ -1,19 +1,72 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../models/ingredient.dart';
 import '../models/recipe.dart';
 import '../repositories/recipe_history_repository.dart';
+import 'ingredient_service.dart';
 
-/// 레시피는 두 출처가 있다.
-///   1) LLM이 실시간 생성 (FastAPI /recipes/recommend) — 향후 API 클라이언트 연결
-///   2) 사용자가 본 적이 있는 레시피 (recipesHistory)
-///
-/// 현재는 LLM 호출이 아직 라우터에 연결 안 되어 있어서, 이 서비스는
-/// "최근 본 레시피 이력" 위주로 동작한다. LLM 완성 시 fetchRecommendations()만
-/// 교체하면 된다.
+/// 레시피 서비스
+/// 1) LLM 실시간 생성 추천 (FastAPI 연동 예정)
+/// 2) 사용자가 확인한 레시피 이력 관리 (Firestore)
 class RecipeService {
   RecipeService._();
 
-  /// 최근 본 레시피 이력. 홈/레시피 탭에서 사용.
+  static const String _baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:8000',
+  );
+  static const String _fridgeId = 'fridge_1'; // 향후 실제 fridgeId로 교체 필요
+  static const String _devToken = 'dev-token';
+
+  // 시뮬레이션을 위한 더미 레시피 데이터
+  static final List<Recipe> _recipes = [
+    const Recipe(
+      id: '1',
+      title: '계란 볶음밥',
+      time: '15분',
+      description: '달걀을 활용해 간단하게 만들 수 있는 볶음밥입니다.',
+      ownedIngredients: ['달걀'],
+      missingIngredients: ['밥', '대파'],
+      steps: [
+        '팬에 기름을 두르고 달걀을 풀어 스크램블을 만듭니다.',
+        '밥을 넣고 함께 볶습니다.',
+        '간장과 소금으로 간을 맞춥니다.',
+        '대파를 넣고 마무리합니다.',
+      ],
+    ),
+    const Recipe(
+      id: '2',
+      title: '크림 파스타',
+      time: '25분',
+      description: '우유를 활용해 부드럽게 만들 수 있는 크림 파스타입니다.',
+      ownedIngredients: ['우유'],
+      missingIngredients: ['파스타면', '베이컨'],
+      steps: [
+        '파스타면을 삶습니다.',
+        '팬에 베이컨과 양파를 볶습니다.',
+        '우유를 넣고 끓입니다.',
+        '삶은 면을 넣고 소스를 졸입니다.',
+      ],
+    ),
+    const Recipe(
+      id: '3',
+      title: '버섯 된장찌개',
+      time: '20분',
+      description: '버섯을 활용한 따뜻한 된장찌개입니다.',
+      ownedIngredients: ['양송이버섯'],
+      missingIngredients: ['된장', '두부', '애호박'],
+      steps: [
+        '물에 된장을 풀고 끓입니다.',
+        '버섯과 채소를 넣습니다.',
+        '두부를 넣고 한 번 더 끓입니다.',
+        '간을 맞춘 후 완성합니다.',
+      ],
+    ),
+  ];
+
+  /// 최근 본 레시피 이력 가져오기
   static Future<List<Recipe>> getRecipes() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return [];
@@ -21,6 +74,7 @@ class RecipeService {
     return history.map((item) => item.recipe).toList();
   }
 
+  /// 실시간 레시피 이력 스트림
   static Stream<List<Recipe>> watchRecipes() async* {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
@@ -32,7 +86,42 @@ class RecipeService {
         .map((items) => items.map((e) => e.recipe).toList());
   }
 
-  /// 레시피 상세 화면 진입 시 호출 — "본 적 있음"으로 기록.
+  /// 레시피 추천 (FastAPI 연동 및 실패 시 더미 데이터 반환)
+  static Future<List<Recipe>> recommendRecipes({
+    int maxResults = 3,
+    bool useDummyOnFailure = true,
+  }) async {
+    final ingredients = await IngredientService.getIngredients();
+
+    if (ingredients.isEmpty) {
+      return [];
+    }
+
+    try {
+      final response = await _request(
+        method: 'POST',
+        path: '/recipes/recommend',
+        body: {
+          'fridgeId': _fridgeId,
+          'maxResults': maxResults,
+          'ingredients': ingredients.map(_ingredientToJson).toList(),
+        },
+      );
+      final decoded = jsonDecode(response) as Map<String, dynamic>;
+      final recipes = decoded['recipes'] as List<dynamic>? ?? [];
+
+      return recipes
+          .map((item) => _recipeFromJson(item as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      if (!useDummyOnFailure) rethrow;
+      // API 실패 시 보유 식재료 기반 더미 추천
+      await Future.delayed(const Duration(milliseconds: 600));
+      return _dummyRecommendations(ingredients, maxResults);
+    }
+  }
+
+  /// 레시피 상세 화면 진입 시 기록 저장
   static Future<void> recordView({
     required Recipe recipe,
     String source = RecipeSource.llm,
@@ -46,7 +135,7 @@ class RecipeService {
     );
   }
 
-  /// 이력에서 제목으로 검색.
+  /// 이력 내에서 제목으로 검색
   static Future<Recipe?> searchRecipe(String keyword) async {
     if (keyword.isEmpty) return null;
     final recipes = await getRecipes();
@@ -56,9 +145,11 @@ class RecipeService {
     return null;
   }
 
+  /// ID로 레시피 조회
   static Future<Recipe?> getRecipeById(String id) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return null;
+    
     final history = await RecipeHistoryRepository.instance.list(uid);
     for (final item in history) {
       if (item.recipe.id == id) return item.recipe;
@@ -66,9 +157,101 @@ class RecipeService {
     return null;
   }
 
-  /// LLM 추천 호출 (FastAPI 연결 후 구현). 현재는 빈 리스트.
-  /// TODO: ApiClient 추가되면 여기서 POST /recipes/recommend 호출.
-  static Future<List<Recipe>> fetchRecommendations() async {
-    return [];
+  // --- Private Helpers ---
+
+  static Future<String> _request({
+    required String method,
+    required String path,
+    Map<String, dynamic>? body,
+  }) async {
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 5);
+
+    try {
+      final request = await client.openUrl(method, Uri.parse('$_baseUrl$path'));
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_devToken');
+      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+
+      if (body != null) {
+        request.write(jsonEncode(body));
+      }
+
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException(responseBody);
+      }
+
+      return responseBody;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  static Map<String, dynamic> _ingredientToJson(Ingredient ingredient) {
+    return {
+      'name': ingredient.name,
+      'category': ingredient.category,
+      'count': ingredient.count,
+      'expireDate': ingredient.expireDate.toIso8601String(),
+      'dday': ingredient.dday,
+    };
+  }
+
+  static Recipe _recipeFromJson(Map<String, dynamic> json) {
+    return Recipe(
+      id: json['id'] as String? ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
+      title: json['title'] as String? ?? '추천 레시피',
+      time: json['time'] as String? ?? '20분',
+      description: json['description'] as String? ?? '',
+      ownedIngredients: _stringList(json['ownedIngredients']),
+      missingIngredients: _stringList(json['missingIngredients']),
+      steps: _stringList(json['steps']),
+    );
+  }
+
+  static List<String> _stringList(dynamic value) {
+    if (value is! List) return [];
+    return value.map((item) => item.toString()).toList();
+  }
+
+  static List<Recipe> _dummyRecommendations(
+    List<Ingredient> ingredients,
+    int maxResults,
+  ) {
+    final ingredientNames = ingredients.map((item) => item.name).toSet();
+    final sortedIngredients = List<Ingredient>.from(ingredients)
+      ..sort((a, b) => a.dday.compareTo(b.dday));
+
+    // 보유한 재료가 포함된 더미 레시피 필터링
+    final recommended = _recipes.where((recipe) {
+      return recipe.ownedIngredients.any(ingredientNames.contains);
+    }).toList();
+
+    if (recommended.isNotEmpty) {
+      return recommended.take(maxResults).toList();
+    }
+
+    // 보유 재료와 매칭되는 레시피가 없을 경우 유통기한 임박 재료 기준 임시 생성
+    final first = sortedIngredients.first;
+    return [
+      Recipe(
+        id: 'dummy_${first.id}',
+        title: '${first.name} 활용 간단 요리',
+        time: '20분',
+        description:
+            '${first.name}을 먼저 사용하도록 구성한 임시 추천입니다. LLM API가 연결되면 실제 추천 결과로 교체됩니다.',
+        ownedIngredients: [first.name],
+        missingIngredients: ['소금', '후추'],
+        steps: [
+          '${first.name}을 먹기 좋은 크기로 손질합니다.',
+          '팬을 예열하고 재료를 넣어 익힙니다.',
+          '소금과 후추로 간을 맞춥니다.',
+          '그릇에 담아 마무리합니다.',
+        ],
+      ),
+    ];
   }
 }

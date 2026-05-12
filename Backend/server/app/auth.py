@@ -20,7 +20,6 @@ def _init_firebase() -> None:
         cred = credentials.Certificate(cred_path)
         firebase_admin.initialize_app(cred)
     else:
-        # Cloud Run에서는 ADC(Application Default Credentials)를 자동 사용
         firebase_admin.initialize_app()
 
 
@@ -38,6 +37,9 @@ def get_current_user(
     creds: HTTPAuthorizationCredentials = Depends(_bearer),
 ) -> CurrentUser:
     token = creds.credentials
+    if os.getenv("DEV_AUTH_ENABLED") == "1" and token == "dev-token":
+        return CurrentUser(uid="user_1", email="dev@example.com", name="개발자")
+
     try:
         decoded = fb_auth.verify_id_token(token)
     except Exception as e:
@@ -57,9 +59,6 @@ def get_current_user(
 def verify_cron_secret(
     x_cron_secret: Optional[str] = Header(default=None, alias="X-Cron-Secret"),
 ) -> bool:
-    """cron-job.org가 호출할 때 헤더로 보내는 비밀키를 검증.
-    값은 환경변수 CRON_SECRET으로 주입.
-    """
     expected = os.getenv("CRON_SECRET")
     if not expected:
         raise HTTPException(
