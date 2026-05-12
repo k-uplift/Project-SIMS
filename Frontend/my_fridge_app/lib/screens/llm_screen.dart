@@ -19,9 +19,11 @@ class _LlmScreenState extends State<LlmScreen> {
   final TextEditingController controller = TextEditingController();
 
   final List<ChatMessage> messages = [
-    const ChatMessage(
+    ChatMessage(
+      id: 'welcome',
       text: '안녕하세요! 냉장고에 있는 식재료를 바탕으로 레시피를 추천해드릴게요.',
-      isUser: false,
+      role: MessageRole.assistant,
+      createdAt: DateTime.now(),
     ),
   ];
 
@@ -31,7 +33,12 @@ class _LlmScreenState extends State<LlmScreen> {
     if (text.isEmpty) return;
 
     setState(() {
-      messages.add(ChatMessage(text: text, isUser: true));
+      messages.add(ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        text: text,
+        role: MessageRole.user,
+        createdAt: DateTime.now(),
+      ));
       controller.clear();
     });
 
@@ -43,9 +50,11 @@ class _LlmScreenState extends State<LlmScreen> {
     setState(() {
       messages.add(
         ChatMessage(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
           text:
           '${response.text}\n\n현재 보유 식재료: ${ingredients.map((e) => e.name).join(', ')}',
-          isUser: false,
+          role: MessageRole.assistant,
+          createdAt: DateTime.now(),
         ),
       );
     });
@@ -97,7 +106,7 @@ class _LlmScreenState extends State<LlmScreen> {
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: AppColors.mainGreen.withOpacity(0.15),
+                color: AppColors.mainGreen.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: const Icon(

@@ -1,77 +1,74 @@
+import 'package:firebase_auth/firebase_auth.dart';
+
 import '../models/recipe.dart';
+import '../repositories/recipe_history_repository.dart';
 
+/// 레시피는 두 출처가 있다.
+///   1) LLM이 실시간 생성 (FastAPI /recipes/recommend) — 향후 API 클라이언트 연결
+///   2) 사용자가 본 적이 있는 레시피 (recipesHistory)
+///
+/// 현재는 LLM 호출이 아직 라우터에 연결 안 되어 있어서, 이 서비스는
+/// "최근 본 레시피 이력" 위주로 동작한다. LLM 완성 시 fetchRecommendations()만
+/// 교체하면 된다.
 class RecipeService {
-  static final List<Recipe> _recipes = [
-    const Recipe(
-      id: '1',
-      title: '계란 볶음밥',
-      time: '15분',
-      description: '달걀을 활용해 간단하게 만들 수 있는 볶음밥입니다.',
-      ownedIngredients: ['달걀'],
-      missingIngredients: ['밥', '대파'],
-      steps: [
-        '팬에 기름을 두르고 달걀을 풀어 스크램블을 만듭니다.',
-        '밥을 넣고 함께 볶습니다.',
-        '간장과 소금으로 간을 맞춥니다.',
-        '대파를 넣고 마무리합니다.',
-      ],
-    ),
-    const Recipe(
-      id: '2',
-      title: '크림 파스타',
-      time: '25분',
-      description: '우유를 활용해 부드럽게 만들 수 있는 크림 파스타입니다.',
-      ownedIngredients: ['우유'],
-      missingIngredients: ['파스타면', '베이컨'],
-      steps: [
-        '파스타면을 삶습니다.',
-        '팬에 베이컨과 양파를 볶습니다.',
-        '우유를 넣고 끓입니다.',
-        '삶은 면을 넣고 소스를 졸입니다.',
-      ],
-    ),
-    const Recipe(
-      id: '3',
-      title: '버섯 된장찌개',
-      time: '20분',
-      description: '버섯을 활용한 따뜻한 된장찌개입니다.',
-      ownedIngredients: ['양송이버섯'],
-      missingIngredients: ['된장', '두부', '애호박'],
-      steps: [
-        '물에 된장을 풀고 끓입니다.',
-        '버섯과 채소를 넣습니다.',
-        '두부를 넣고 한 번 더 끓입니다.',
-        '간을 맞춘 후 완성합니다.',
-      ],
-    ),
-  ];
+  RecipeService._();
 
+  /// 최근 본 레시피 이력. 홈/레시피 탭에서 사용.
   static Future<List<Recipe>> getRecipes() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    return List.from(_recipes);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return [];
+    final history = await RecipeHistoryRepository.instance.list(uid);
+    return history.map((item) => item.recipe).toList();
   }
 
-  static Future<Recipe?> searchRecipe(String keyword) async {
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    for (final recipe in _recipes) {
-      if (recipe.title.contains(keyword)) {
-        return recipe;
-      }
+  static Stream<List<Recipe>> watchRecipes() async* {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      yield [];
+      return;
     }
+    yield* RecipeHistoryRepository.instance
+        .watch(uid)
+        .map((items) => items.map((e) => e.recipe).toList());
+  }
 
+  /// 레시피 상세 화면 진입 시 호출 — "본 적 있음"으로 기록.
+  static Future<void> recordView({
+    required Recipe recipe,
+    String source = RecipeSource.llm,
+  }) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    await RecipeHistoryRepository.instance.record(
+      uid: uid,
+      recipe: recipe,
+      source: source,
+    );
+  }
+
+  /// 이력에서 제목으로 검색.
+  static Future<Recipe?> searchRecipe(String keyword) async {
+    if (keyword.isEmpty) return null;
+    final recipes = await getRecipes();
+    for (final recipe in recipes) {
+      if (recipe.title.contains(keyword)) return recipe;
+    }
     return null;
   }
 
   static Future<Recipe?> getRecipeById(String id) async {
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    for (final recipe in _recipes) {
-      if (recipe.id == id) {
-        return recipe;
-      }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return null;
+    final history = await RecipeHistoryRepository.instance.list(uid);
+    for (final item in history) {
+      if (item.recipe.id == id) return item.recipe;
     }
-
     return null;
+  }
+
+  /// LLM 추천 호출 (FastAPI 연결 후 구현). 현재는 빈 리스트.
+  /// TODO: ApiClient 추가되면 여기서 POST /recipes/recommend 호출.
+  static Future<List<Recipe>> fetchRecommendations() async {
+    return [];
   }
 }
