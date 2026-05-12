@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/ingredient.dart';
 import '../services/ingredient_service.dart';
+import '../services/storage_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/bottom_nav.dart';
 import 'ingredient_detail_screen.dart';
@@ -33,32 +34,51 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
   }
 
   Widget imageView(Ingredient item) {
-    // 필드명 변경 반영 (imagePath -> imageURL)
-    if (item.imageURL == null) {
+    final url = item.imageURL;
+
+    // 이미지 없음 → 에모지 폴백
+    if (url == null || url.isEmpty) {
       return Container(
         width: 54,
         height: 54,
         decoration: BoxDecoration(
-          // 최신 버전 권장 API 사용
           color: AppColors.mainGreen.withValues(alpha: 0.2),
           shape: BoxShape.circle,
         ),
         child: Center(
           child: Text(
-            item.emoji ?? '❓', // null 대비
+            item.emoji ?? '❓',
             style: const TextStyle(fontSize: 24),
           ),
         ),
       );
     }
 
+    // URL인지 로컬 경로인지 분기 (기존 로컬 경로 데이터와의 호환)
+    final imageProvider = StorageService.isRemoteUrl(url)
+        ? NetworkImage(url) as ImageProvider
+        : FileImage(File(url));
+
     return ClipOval(
-      child: Image.file(
-        File(item.imageURL!),
+      child: Image(
+        image: imageProvider,
         width: 54,
         height: 54,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image),
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: 54,
+          height: 54,
+          decoration: BoxDecoration(
+            color: AppColors.mainGreen.withValues(alpha: 0.2),
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              item.emoji ?? '❓',
+              style: const TextStyle(fontSize: 24),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -82,7 +102,7 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
   }
 
   Future<void> openDetail(Ingredient item) async {
-    final changed = await Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => IngredientDetailScreen(ingredient: item),
@@ -176,6 +196,16 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                     ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      categoryChip('전체', true),
+                      const SizedBox(width: 8),
+                      categoryChip('냉장', false),
+                      const SizedBox(width: 8),
+                      categoryChip('냉동', false),
+                    ],
                   ),
                   const SizedBox(height: 20),
                   Expanded(

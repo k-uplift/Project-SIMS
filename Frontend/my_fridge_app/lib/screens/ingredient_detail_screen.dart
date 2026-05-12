@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import '../models/ingredient.dart';
 import '../services/ingredient_service.dart';
+import '../services/storage_service.dart';
 import '../theme/app_colors.dart';
 
 class IngredientDetailScreen extends StatefulWidget {
@@ -20,7 +20,6 @@ class IngredientDetailScreen extends StatefulWidget {
 class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
   late Ingredient ingredient;
   bool isEditing = false;
-  XFile? pickedImage;
 
   late TextEditingController nameController;
   late TextEditingController categoryController;
@@ -34,21 +33,10 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
     nameController = TextEditingController(text: ingredient.name);
     categoryController = TextEditingController(text: ingredient.category);
     countController = TextEditingController(text: ingredient.count.toString());
-    // 모델의 expireDateString (YYYY-MM-DD) 사용
     expireDateController = TextEditingController(text: ingredient.expireDateString);
   }
 
-  @override
-  void dispose() {
-    nameController.dispose();
-    categoryController.dispose();
-    countController.dispose();
-    expireDateController.dispose();
-    super.dispose();
-  }
-
   Future<void> saveIngredient() async {
-    // 수정한 데이터를 바탕으로 새로운 객체 생성
     final updatedIngredient = Ingredient(
       id: ingredient.id,
       fridgeId: ingredient.fridgeId,
@@ -57,11 +45,11 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
       emoji: ingredient.emoji,
       count: int.tryParse(countController.text.trim()) ?? ingredient.count,
       expireDate: DateTime.tryParse(expireDateController.text.trim()) ?? ingredient.expireDate,
-      imageURL: pickedImage?.path ?? ingredient.imageURL,
+      imageURL: ingredient.imageURL,
       addedBy: ingredient.addedBy,
       addedVia: ingredient.addedVia,
       createdAt: ingredient.createdAt,
-      updatedAt: DateTime.now(), // 수정 시각 갱신
+      updatedAt: DateTime.now(),
     );
 
     await IngredientService.updateIngredient(updatedIngredient);
@@ -70,62 +58,11 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
 
     setState(() {
       ingredient = updatedIngredient;
-      pickedImage = null;
       isEditing = false;
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('수정되었습니다.')),
-    );
-  }
-
-  Future<void> pickImage(ImageSource source) async {
-    final picker = ImagePicker();
-    final image = await picker.pickImage(source: source);
-
-    if (image == null) return;
-
-    setState(() {
-      pickedImage = image;
-    });
-  }
-
-  void showImageSourceSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                imageSourceTile(
-                  icon: Icons.camera_alt,
-                  title: '사진 촬영',
-                  onTap: () {
-                    Navigator.pop(context);
-                    pickImage(ImageSource.camera);
-                  },
-                ),
-                const SizedBox(height: 8),
-                imageSourceTile(
-                  icon: Icons.photo_library,
-                  title: '앨범에서 선택',
-                  onTap: () {
-                    Navigator.pop(context);
-                    pickImage(ImageSource.gallery);
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -138,10 +75,10 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
   }
 
   Widget imageView() {
-    // imageURL이 없으면 에모지 표시
-    final imagePath = pickedImage?.path ?? ingredient.imageURL;
+    final url = ingredient.imageURL;
 
-    if (imagePath == null || imagePath.isEmpty) {
+    // 이미지 없음 → 큰 에모지 표시
+    if (url == null || url.isEmpty) {
       return Container(
         width: 180,
         height: 180,
@@ -158,63 +95,27 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
       );
     }
 
-    // 로컬 파일 경로인 경우 처리 (필요시 NetworkImage와 분기 로직 추가 가능)
+    // URL인지 로컬 경로인지 분기
+    final imageProvider = StorageService.isRemoteUrl(url)
+        ? NetworkImage(url) as ImageProvider
+        : FileImage(File(url));
+
     return ClipOval(
-      child: Image.file(
-        File(imagePath),
+      child: Image(
+        image: imageProvider,
         width: 180,
         height: 180,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 80),
-      ),
-    );
-  }
-
-  Widget editableImageView() {
-    return GestureDetector(
-      onTap: showImageSourceSheet,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          imageView(),
-          Positioned(
-            right: 8,
-            bottom: 8,
-            child: Container(
-              width: 42,
-              height: 42,
-              decoration: const BoxDecoration(
-                color: AppColors.mainGreen,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.add_a_photo,
-                color: Colors.white,
-                size: 22,
-              ),
-            ),
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: 180,
+          height: 180,
+          decoration: BoxDecoration(
+            color: AppColors.mainGreen.withValues(alpha: 0.15),
+            shape: BoxShape.circle,
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget imageSourceTile({
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      onTap: onTap,
-      leading: Icon(icon, color: AppColors.mainGreen),
-      title: Text(
-        title,
-        style: const TextStyle(
-          color: AppColors.textMain,
-          fontWeight: FontWeight.bold,
+          child: const Icon(Icons.broken_image, size: 80),
         ),
       ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     );
   }
 
@@ -295,7 +196,7 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
   Widget editView() {
     return Column(
       children: [
-        editableImageView(),
+        imageView(),
         const SizedBox(height: 24),
         inputField('식재료 이름', nameController),
         inputField('분류', categoryController),
@@ -313,9 +214,7 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
             child: GestureDetector(
               onTap: () {
                 setState(() {
-                  pickedImage = null;
                   isEditing = false;
-                  // 원복
                   nameController.text = ingredient.name;
                   categoryController.text = ingredient.category;
                   countController.text = ingredient.count.toString();
@@ -373,7 +272,6 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
           child: GestureDetector(
             onTap: () {
               setState(() {
-                pickedImage = null;
                 isEditing = true;
               });
             },

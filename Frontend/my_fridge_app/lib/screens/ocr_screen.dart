@@ -151,7 +151,7 @@ class _OcrScreenState extends State<OcrScreen> {
       emoji: emojiForCategory(_selectedCategory),
       count: int.tryParse(_countController.text.trim()) ?? 1,
       expireDate: expireDate,
-      imageURL: pickedImage?.path,
+      imageLocalPath: pickedImage?.path,
       addedVia: IngredientSource.manual,
     );
 
@@ -188,7 +188,7 @@ class _OcrScreenState extends State<OcrScreen> {
         emoji: '🥛',
         count: 1,
         expireDate: DateTime.now().add(const Duration(days: 7)),
-        imageURL: pickedImage?.path,
+        imageLocalPath: pickedImage?.path,
         addedVia: source,
       );
 
@@ -198,7 +198,7 @@ class _OcrScreenState extends State<OcrScreen> {
         emoji: '🥚',
         count: 10,
         expireDate: DateTime.now().add(const Duration(days: 5)),
-        imageURL: pickedImage?.path,
+        imageLocalPath: pickedImage?.path,
         addedVia: source,
       );
     } else if (mode == RegisterMode.image) {
@@ -208,7 +208,7 @@ class _OcrScreenState extends State<OcrScreen> {
         emoji: '🍅',
         count: 3,
         expireDate: DateTime.now().add(const Duration(days: 6)),
-        imageURL: pickedImage?.path,
+        imageLocalPath: pickedImage?.path,
         addedVia: source,
       );
     }
