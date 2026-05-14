@@ -3,7 +3,17 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import chat, dummy, fcm, health, ingredients, recipes, tasks
+from app.routers import (
+    chat,
+    dummy,
+    fcm,
+    fridges,
+    health,
+    ingredients,
+    recipes,
+    tasks,
+    users,
+)
 
 
 app = FastAPI(
@@ -31,6 +41,8 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(dummy.router)
+app.include_router(users.router)
+app.include_router(fridges.router)
 app.include_router(ingredients.router)
 app.include_router(recipes.router)
 app.include_router(chat.router)
