@@ -1,5 +1,4 @@
 import 'package:firebase_auth/firebase_auth.dart';
-
 import '../models/user_profile.dart';
 import '../repositories/fridge_repository.dart';
 import '../repositories/user_repository.dart';
@@ -23,10 +22,11 @@ class AuthService {
   }
 
   /// 회원가입.
-  /// 성공 시 null, 실패 시 사람이 읽을 수 있는 에러 메시지를 반환 (기존 시그니처 유지).
+  /// 성공 시 null, 실패 시 사람이 읽을 수 있는 에러 메시지를 반환.
   /// 가입 직후 users/{uid} 문서를 만들고, 기본 냉장고를 1개 생성한다.
   static Future<String?> signUp({
     required String email,
+    required String nickname,
     required String password,
     required String passwordConfirm,
   }) async {
@@ -42,23 +42,24 @@ class AuthService {
       final user = cred.user;
       if (user == null) return '회원가입에 실패했습니다.';
 
-      // Firestore 사용자 문서 생성
+      // Firestore 사용자 프로필 생성
       await UserRepository.instance.createOrUpdate(
         uid: user.uid,
         email: email,
+        displayName: nickname,
       );
 
       // 기본 냉장고 1개 생성 (멤버=본인)
       await FridgeRepository.instance.create(
         ownerUid: user.uid,
-        name: '내 냉장고',
+        name: '$nickname의 냉장고',
       );
 
       return null;
     } on FirebaseAuthException catch (e) {
       switch (e.code) {
         case 'email-already-in-use':
-          return '이미 존재하는 아이디입니다.';
+          return '이미 존재하는 이메일입니다.';
         case 'invalid-email':
           return '잘못된 이메일 형식입니다.';
         case 'weak-password':
@@ -66,14 +67,12 @@ class AuthService {
         default:
           return '회원가입 중 오류가 발생했습니다: ${e.code}';
       }
-    } catch (_) {
+    } catch (e) {
       return '회원가입 중 오류가 발생했습니다.';
     }
   }
 
   /// 로그인. 기존 인터페이스(rememberLogin 포함) 유지.
-  /// Firebase Auth는 기본적으로 로컬 세션을 디스크에 저장하므로
-  /// rememberLogin 플래그는 명시적 로그아웃 분기에만 사용.
   static Future<bool> login({
     required String email,
     required String password,

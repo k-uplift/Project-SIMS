@@ -30,14 +30,11 @@ from app.schemas.tasks import CheckExpiryResponse
 from app.schemas.users import User, UserMeResponse
 
 __all__ = [
-    # common
     "ErrorResponse",
     "HealthResponse",
-    # dummy
     "EchoRequest",
     "EchoResponse",
     "WhoAmIResponse",
-    # ingredients
     "ImageIngestRequest",
     "IngestResponse",
     "Ingredient",
@@ -46,21 +43,17 @@ __all__ = [
     "IngredientSource",
     "IngredientUpdate",
     "ReceiptIngestRequest",
-    # recipes
     "Recipe",
     "RecipeHistoryItem",
     "RecipeHistoryResponse",
     "RecipeRecommendRequest",
     "RecipeRecommendResponse",
-    # chat
     "ChatRequest",
     "ChatResponse",
     "MessageRole",
-    # fcm
     "DevicePlatform",
     "FCMRegisterRequest",
     "FCMRegisterResponse",
-    # tasks
     "CheckExpiryResponse",
     # fridges
     "Fridge",

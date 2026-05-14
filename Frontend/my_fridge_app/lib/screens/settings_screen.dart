@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 import '../theme/app_colors.dart';
 import 'login_screen.dart';
-import '../services/auth_service.dart';
 import 'share_fridge_screen.dart';
 
 class SettingsScreen extends StatefulWidget {

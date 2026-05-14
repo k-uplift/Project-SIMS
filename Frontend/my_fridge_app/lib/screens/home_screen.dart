@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/ingredient.dart';
 import '../models/recipe.dart';
-import '../services/auth_service.dart';
+import '../services/fridge_service.dart';
 import '../services/ingredient_service.dart';
 import '../services/recipe_service.dart';
 import '../theme/app_colors.dart';
@@ -9,7 +9,6 @@ import '../widgets/bottom_nav.dart';
 import 'ingredient_list_screen.dart';
 import 'notification_screen.dart';
 import 'recipe_detail_screen.dart';
-import 'recipe_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -22,6 +21,43 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final searchController = TextEditingController();
   String searchMessage = '';
+
+  // 냉장고 선택용 상태
+  List<FridgeView> myFridges = [];
+  String? currentFridgeId;
+  bool loadingFridges = true;
+
+  // 화면 갱신 트리거. 냉장고 바뀌면 이 키를 새로 만들어서
+  // FutureBuilder들이 다시 fetch하도록 함.
+  Key dataKey = UniqueKey();
+
+  @override
+  void initState() {
+    super.initState();
+    loadFridges();
+  }
+
+  Future<void> loadFridges() async {
+    final list = await FridgeService.myFridges();
+    final current = await FridgeService.currentFridgeId();
+    if (!mounted) return;
+    setState(() {
+      myFridges = list;
+      currentFridgeId = current;
+      loadingFridges = false;
+    });
+  }
+
+  Future<void> selectFridge(FridgeView view) async {
+    if (view.id == currentFridgeId) return;
+    await FridgeService.setPrimaryFridge(view.id);
+    if (!mounted) return;
+    setState(() {
+      currentFridgeId = view.id;
+      // 유통기한 임박 / 알림 배지가 새 냉장고 기준으로 갱신되도록
+      dataKey = UniqueKey();
+    });
+  }
 
   Future<void> search() async {
     final keyword = searchController.text.trim();
@@ -69,6 +105,155 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  /// 헤더 부제목: 냉장고 0개면 '냉장고', 1개면 단순 텍스트, 2개+면 드롭다운.
+  Widget fridgeHeader() {
+    const baseStyle = TextStyle(
+      color: AppColors.textSub,
+      fontWeight: FontWeight.bold,
+    );
+
+    if (loadingFridges) {
+      return const Text('', style: baseStyle);
+    }
+
+    if (myFridges.isEmpty) {
+      return const Text('냉장고', style: baseStyle);
+    }
+
+    final current = myFridges.firstWhere(
+          (v) => v.id == currentFridgeId,
+      orElse: () => myFridges.first,
+    );
+
+    if (myFridges.length <= 1) {
+      return Text(current.displayName, style: baseStyle);
+    }
+
+    return InkWell(
+      onTap: showFridgePicker,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                current.displayName,
+                style: baseStyle,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 2),
+            const Icon(
+              Icons.expand_more,
+              size: 18,
+              color: AppColors.textSub,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void showFridgePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '냉장고 선택',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...myFridges.map((view) {
+                  final selected = view.id == currentFridgeId;
+                  return InkWell(
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      selectFridge(view);
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppColors.mainGreen.withValues(alpha: 0.1)
+                            : const Color(0xFFF5F5F2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: selected
+                              ? AppColors.mainGreen
+                              : Colors.transparent,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            selected
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked,
+                            color: selected
+                                ? AppColors.mainGreen
+                                : AppColors.textSub,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  view.displayName,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: selected
+                                        ? AppColors.deepGreen
+                                        : AppColors.textMain,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${view.memberCount}명 사용 중',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSub,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget expiringCard(List<Ingredient> items) {
     if (items.isEmpty) {
       return Container(
@@ -95,7 +280,7 @@ class _HomeScreenState extends State<HomeScreen> {
             width: 50,
             height: 50,
             decoration: BoxDecoration(
-              color: AppColors.orange.withOpacity(0.2),
+              color: AppColors.orange.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(Icons.warning, color: AppColors.orange),
@@ -154,8 +339,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final userEmail = AuthService.currentUser?.email ?? 'OO';
-
     return Scaffold(
       backgroundColor: AppColors.background,
       bottomNavigationBar: const BottomNav(currentIndex: 2),
@@ -179,6 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Row(
                     children: [
                       FutureBuilder(
+                        key: ValueKey('badge-$dataKey'),
                         future: IngredientService.getExpiringIngredients(),
                         builder: (context, snapshot) {
                           final notificationCount = snapshot.data?.length ?? 0;
@@ -238,13 +422,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
               const SizedBox(height: 18),
-              Text(
-                '$userEmail 님의 냉장고',
-                style: const TextStyle(
-                  color: AppColors.textSub,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              fridgeHeader(),
               const SizedBox(height: 20),
               Row(
                 children: [
@@ -309,6 +487,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 12),
               FutureBuilder<List<Ingredient>>(
+                key: ValueKey('expiring-$dataKey'),
                 future: IngredientService.getExpiringIngredients(),
                 builder: (context, snapshot) {
                   final items = snapshot.data ?? [];
@@ -322,6 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 12),
               FutureBuilder<List<Recipe>>(
+                key: ValueKey('recipe-$dataKey'),
                 future: RecipeService.getRecipes(),
                 builder: (context, snapshot) {
                   final recipes = snapshot.data ?? [];

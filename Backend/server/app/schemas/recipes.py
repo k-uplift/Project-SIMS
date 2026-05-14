@@ -22,8 +22,17 @@ class Recipe(CamelModel):
     steps: List[str] = Field(default_factory=list)
 
 
+class RecipeRecommendIngredient(CamelModel):
+    name: str
+    category: str
+    count: int
+    expire_date: str
+    dday: int
+
+
 class RecipeRecommendRequest(CamelModel):
     fridge_id: str
+    ingredients: List[RecipeRecommendIngredient] = Field(default_factory=list)
     cuisine: Optional[str] = Field(None, examples=["한식", "양식", "중식", "일식"])
     difficulty: Optional[str] = Field(None, examples=["쉬움", "보통", "어려움"])
     max_results: int = Field(3, ge=1, le=10)

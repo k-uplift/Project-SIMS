@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/ingredient.dart';
 import '../services/ingredient_service.dart';
+import '../services/storage_service.dart';
 import '../theme/app_colors.dart';
 
 class IngredientDetailScreen extends StatefulWidget {
@@ -32,12 +33,10 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
     nameController = TextEditingController(text: ingredient.name);
     categoryController = TextEditingController(text: ingredient.category);
     countController = TextEditingController(text: ingredient.count.toString());
-    // 모델의 expireDateString (YYYY-MM-DD) 사용
     expireDateController = TextEditingController(text: ingredient.expireDateString);
   }
 
   Future<void> saveIngredient() async {
-    // 수정한 데이터를 바탕으로 새로운 객체 생성
     final updatedIngredient = Ingredient(
       id: ingredient.id,
       fridgeId: ingredient.fridgeId,
@@ -50,7 +49,7 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
       addedBy: ingredient.addedBy,
       addedVia: ingredient.addedVia,
       createdAt: ingredient.createdAt,
-      updatedAt: DateTime.now(), // 수정 시각 갱신
+      updatedAt: DateTime.now(),
     );
 
     await IngredientService.updateIngredient(updatedIngredient);
@@ -76,8 +75,10 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
   }
 
   Widget imageView() {
-    // imageURL이 없으면 에모지 표시
-    if (ingredient.imageURL == null || ingredient.imageURL!.isEmpty) {
+    final url = ingredient.imageURL;
+
+    // 이미지 없음 → 큰 에모지 표시
+    if (url == null || url.isEmpty) {
       return Container(
         width: 180,
         height: 180,
@@ -94,14 +95,26 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
       );
     }
 
-    // 로컬 파일 경로인 경우 처리 (필요시 NetworkImage와 분기 로직 추가 가능)
+    // URL인지 로컬 경로인지 분기
+    final imageProvider = StorageService.isRemoteUrl(url)
+        ? NetworkImage(url) as ImageProvider
+        : FileImage(File(url));
+
     return ClipOval(
-      child: Image.file(
-        File(ingredient.imageURL!),
+      child: Image(
+        image: imageProvider,
         width: 180,
         height: 180,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 80),
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: 180,
+          height: 180,
+          decoration: BoxDecoration(
+            color: AppColors.mainGreen.withValues(alpha: 0.15),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.broken_image, size: 80),
+        ),
       ),
     );
   }
@@ -202,7 +215,6 @@ class _IngredientDetailScreenState extends State<IngredientDetailScreen> {
               onTap: () {
                 setState(() {
                   isEditing = false;
-                  // 원복
                   nameController.text = ingredient.name;
                   categoryController.text = ingredient.category;
                   countController.text = ingredient.count.toString();
