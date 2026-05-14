@@ -1,82 +1,131 @@
+import 'package:firebase_auth/firebase_auth.dart';
+
 import '../models/ingredient.dart';
-import 'auth_service.dart';
+import '../models/user_profile.dart';
+import '../repositories/fridge_repository.dart';
+import '../repositories/ingredient_repository.dart';
+import '../repositories/user_repository.dart';
 
+/// UI 호환을 위한 wrapper. 내부적으로 IngredientRepository 호출.
+///
+/// 기존 코드는 userId 한 명 기준으로 동작했지만, 실제 데이터 모델은 fridgeId
+/// 단위로 동작한다. 사용자가 속한 첫 번째 fridgeId를 자동으로 사용.
 class IngredientService {
-  static final List<Ingredient> _ingredients = [
-    const Ingredient(
-      id: '1',
-      userId: 'user_1',
-      name: '우유',
-      category: '유제품',
-      emoji: '🥛',
-      dday: 2,
-      count: 1,
-      expireDate: '2026-05-10',
-    ),
-    const Ingredient(
-      id: '2',
-      userId: 'user_1',
-      name: '달걀',
-      category: '신선식품',
-      emoji: '🥚',
-      dday: 3,
-      count: 10,
-      expireDate: '2026-05-11',
-    ),
-    const Ingredient(
-      id: '3',
-      userId: 'user_1',
-      name: '양송이버섯',
-      category: '채소',
-      emoji: '🍄',
-      dday: 5,
-      count: 1,
-      expireDate: '2026-05-13',
-    ),
-  ];
+  IngredientService._();
 
-  static String get _currentUserId {
-    return AuthService.currentUser?.id ?? 'user_1';
+  /// 캐시된 fridgeId. 한 번 조회하면 세션 동안 재사용.
+  static String? _cachedFridgeId;
+
+  /// 현재 사용자의 첫 번째 냉장고 ID. 없으면 새로 생성.
+  static Future<String> currentFridgeId() async {
+    if (_cachedFridgeId != null) return _cachedFridgeId!;
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) throw StateError('로그인이 필요합니다.');
+
+    final profile = await UserRepository.instance.get(uid);
+    if (profile != null && profile.fridgeIds.isNotEmpty) {
+      _cachedFridgeId = profile.fridgeIds.first;
+      return _cachedFridgeId!;
+    }
+
+    // 프로필이 없거나 fridgeIds가 비어있으면 새로 만든다 (구버전 사용자 대비).
+    if (profile == null) {
+      await UserRepository.instance.createOrUpdate(
+        uid: uid,
+        email: FirebaseAuth.instance.currentUser?.email ?? '',
+      );
+    }
+    final fridge = await FridgeRepository.instance.create(ownerUid: uid);
+    _cachedFridgeId = fridge.id;
+    return _cachedFridgeId!;
+  }
+
+  /// 로그아웃 시 호출 (다음 로그인 사용자가 다른 사람일 수 있음).
+  static void clearCache() {
+    _cachedFridgeId = null;
   }
 
   static Future<List<Ingredient>> getIngredients() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    return _ingredients.where((item) => item.userId == _currentUserId).toList();
+    final fridgeId = await currentFridgeId();
+    return IngredientRepository.instance.list(fridgeId);
   }
 
-  static Future<List<Ingredient>> getExpiringIngredients() async {
-    final ingredients = await getIngredients();
-    return ingredients.where((item) => item.dday <= 7).toList();
+  /// 실시간 동기화가 필요한 화면에서 사용 (StreamBuilder).
+  static Stream<List<Ingredient>> watchIngredients() async* {
+    final fridgeId = await currentFridgeId();
+    yield* IngredientRepository.instance.watch(fridgeId);
   }
 
-  static Future<void> addIngredient(Ingredient ingredient) async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    _ingredients.add(ingredient);
+  /// 유통기한 7일 이내.
+  static Future<List<Ingredient>> getExpiringIngredients({
+    int withinDays = 7,
+  }) async {
+    final all = await getIngredients();
+    return all.where((item) => item.dday <= withinDays).toList();
+  }
+
+  static Stream<List<Ingredient>> watchExpiringIngredients({
+    int withinDays = 7,
+  }) async* {
+    final fridgeId = await currentFridgeId();
+    yield* IngredientRepository.instance
+        .watchExpiring(fridgeId, withinDays: withinDays);
+  }
+
+  static Future<Ingredient> addIngredient({
+    required String name,
+    required String category,
+    String? emoji,
+    int count = 1,
+    required DateTime expireDate,
+    String? imageURL,
+    String addedVia = IngredientSource.manual,
+  }) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) throw StateError('로그인이 필요합니다.');
+    final fridgeId = await currentFridgeId();
+
+    return IngredientRepository.instance.add(
+      fridgeId: fridgeId,
+      name: name,
+      category: category,
+      emoji: emoji,
+      count: count,
+      expireDate: expireDate,
+      imageURL: imageURL,
+      addedBy: uid,
+      addedVia: addedVia,
+    );
   }
 
   static Future<void> updateIngredient(Ingredient ingredient) async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    final index = _ingredients.indexWhere((item) => item.id == ingredient.id);
-
-    if (index != -1) {
-      _ingredients[index] = ingredient;
-    }
+    await IngredientRepository.instance.update(
+      fridgeId: ingredient.fridgeId,
+      ingredientId: ingredient.id,
+      name: ingredient.name,
+      category: ingredient.category,
+      emoji: ingredient.emoji,
+      count: ingredient.count,
+      expireDate: ingredient.expireDate,
+      imageURL: ingredient.imageURL,
+    );
   }
 
   static Future<void> deleteIngredient(String id) async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    _ingredients.removeWhere((item) => item.id == id);
+    final fridgeId = await currentFridgeId();
+    await IngredientRepository.instance
+        .delete(fridgeId: fridgeId, ingredientId: id);
   }
 
+  /// 부분 일치 검색 (홈 화면 검색바용).
   static Future<Ingredient?> searchIngredient(String keyword) async {
-    final ingredients = await getIngredients();
-
-    for (final item in ingredients) {
-      if (item.name.contains(keyword)) {
-        return item;
-      }
-    }
-
-    return null;
+    if (keyword.isEmpty) return null;
+    final fridgeId = await currentFridgeId();
+    final results = await IngredientRepository.instance.searchByName(
+      fridgeId: fridgeId,
+      keyword: keyword,
+    );
+    return results.isEmpty ? null : results.first;
   }
 }

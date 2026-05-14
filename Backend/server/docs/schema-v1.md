@@ -1,8 +1,9 @@
-# Firestore 스키마 v1 (확정)
+# Firestore 스키마 v2 (운영본)
 
-> 상태: **v1 확정** (2026-05-08, 사용자 확정)
-> 작성: 고범창 (서버 담당)
-> 출처: 프로젝트 제안서 + Flutter `lib/models/` 클래스 + 서버 로드맵
+> 상태: **v2 확정 — 이윤수 작성, 2026-05-11 운영 반영**
+> v1 (2026-05-08, 고범창 임시본) → v2로 교체. v1 변경 이력은 7번 참조.
+> 작성: 이윤수 (DB 담당) / 문서 정리: 고범창 (서버 담당)
+> 출처: 운영 Firestore (`projectsims-9dc71`) 실제 데이터 + 프로젝트 제안서
 
 ## 0. 설계 원칙
 
@@ -48,21 +49,27 @@ fcmTokens/{uid}/devices/{deviceId}
 | 필드 | 타입 | 필수 | 설명 |
 |------|------|------|------|
 | `email` | string | ✅ | Firebase Auth에서 가져옴 |
-| `displayName` | string | ❌ | 닉네임 |
-| `photoURL` | string | ❌ | 프로필 이미지 |
 | `fridgeIds` | array\<string\> | ✅ | 소속된 냉장고 ID (보통 1~2개) |
 | `createdAt` | Timestamp | ✅ | 가입일 |
 | `updatedAt` | Timestamp | ✅ | 마지막 갱신 |
+
+> ℹ️ `displayName`, `photoURL`은 **Firebase Auth 토큰 클레임에 이미 포함**되어 있어 Firestore에 중복 저장하지 않음. 서버가 토큰 검증할 때 직접 읽어서 사용.
 
 ### 2.2 `fridges/{fridgeId}`
 
 | 필드 | 타입 | 필수 | 설명 |
 |------|------|------|------|
-| `name` | string | ✅ | 예: "우리집 냉장고" |
+| `name` | string | ✅ | 예: "내 냉장고" |
 | `ownerUid` | string | ✅ | 생성자 uid (멤버 추가/제거 권한) |
 | `memberUids` | array\<string\> | ✅ | 동거인 uid 목록 (Security Rules에서 `request.auth.uid in memberUids` 체크) |
+| `inviteCode` | string (6자) | ✅ | **동거인 초대 코드** (영문 대문자 6자, 예: `"SZCSYJ"`). 다른 사용자가 이 코드로 `memberUids`에 합류 |
 | `createdAt` | Timestamp | ✅ | |
 | `updatedAt` | Timestamp | ✅ | |
+
+> 🛡️ **`inviteCode` 운영 메모**:
+> - 26^6 ≈ 3억 조합으로 학생 프로젝트에 충분.
+> - 발급 시 **중복 체크** 로직 필요 (Firestore에서 동일 코드 존재 여부 확인 후 재생성).
+> - 보안 강화 필요 시 만료 시간 / 재발급 기능 검토 (W3 이후).
 
 ### 2.3 `fridges/{fridgeId}/ingredients/{ingredientId}` ⭐ 핵심 컬렉션
 
@@ -80,6 +87,11 @@ fcmTokens/{uid}/devices/{deviceId}
 | `updatedAt` | Timestamp | ✅ | |
 
 **인덱스**: `fridgeId + expireDate` (오름차순) — 유통기한 임박 쿼리용.
+
+> 🚨 **`imageURL` 운영 이슈 발견 (2026-05-11)**:
+> 현재 실제 데이터에 `/data/user/0/com.fridge.my_fridge_app/cache/...jpg` 같은 **Flutter 안드로이드 로컬 캐시 경로**가 저장되어 있음.
+> 이는 그 디바이스에서만 보이는 경로라 **동거인 공유 시 다른 사람은 이미지를 못 봄** — 핵심 기능 결함.
+> → W2 작업: Flutter가 Firebase Storage에 업로드한 후 받은 `https://firebasestorage.googleapis.com/...` URL을 저장하도록 수정 필요 (김규섭님 협업).
 
 ### 2.4 `fridges/{fridgeId}/shoppingItems/{itemId}` (Week 2~3)
 
@@ -230,3 +242,26 @@ match /recipesHistory/{uid}/items/{recipeId} {
 - 스키마 변경은 GitHub Issue로만 통보 (구두/카톡 X).
 - 변경 시 v2, v3로 버전 올림. 이 문서는 변경 이력 보존.
 - Week 2 시작 전까지는 자유롭게 수정, 그 이후엔 마이그레이션 비용 고려.
+
+---
+
+## 7. 변경 이력 (Changelog)
+
+### v1 → v2 (2026-05-11, 이윤수)
+
+**추가:**
+- `fridges.inviteCode` (string, 6자) — 동거인 초대 코드 도입. `memberUids`에 합류시키는 메커니즘.
+
+**제거:**
+- `users.displayName` — Firebase Auth 클레임에 이미 존재 (중복 제거)
+- `users.photoURL` — Firebase Auth 클레임에 이미 존재 (중복 제거)
+
+**구조 그대로 유지:**
+- `users.email`, `users.fridgeIds`, `users.createdAt`, `users.updatedAt`
+- `fridges.name`, `fridges.ownerUid`, `fridges.memberUids`, `fridges.createdAt`, `fridges.updatedAt`
+- `ingredients` 전체 (모든 필드/타입 동일)
+- `shoppingItems`, `recipesHistory`, `chats`, `fcmTokens` 전체
+
+**알려진 이슈 (v2에서 발견):**
+- `ingredients.imageURL`이 Flutter 로컬 캐시 경로로 저장되는 버그 → W2 수정 필요 (2.3 참조)
+- `fridges.inviteCode` 발급 시 중복 체크 로직 필요 (2.2 참조)

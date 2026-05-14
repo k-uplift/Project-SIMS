@@ -24,11 +24,15 @@ class NotificationScreen extends StatelessWidget {
           child: FutureBuilder<List<Ingredient>>(
             future: IngredientService.getExpiringIngredients(),
             builder: (context, snapshot) {
-              if (!snapshot.hasData) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              final items = snapshot.data!;
+              if (snapshot.hasError) {
+                return Center(child: Text('오류가 발생했습니다: ${snapshot.error}'));
+              }
+
+              final items = snapshot.data ?? [];
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -51,7 +55,9 @@ class NotificationScreen extends StatelessWidget {
                   const SizedBox(height: 20),
 
                   Expanded(
-                    child: ListView.builder(
+                    child: items.isEmpty
+                        ? const Center(child: Text('알림이 없습니다.'))
+                        : ListView.builder(
                       itemCount: items.length,
                       itemBuilder: (context, index) {
                         final item = items[index];
@@ -66,7 +72,7 @@ class NotificationScreen extends StatelessWidget {
                           child: Row(
                             children: [
                               Text(
-                                item.emoji,
+                                item.emoji ?? '❓', // Null Safety 대응: 기본 이모지 설정
                                 style: const TextStyle(fontSize: 32),
                               ),
                               const SizedBox(width: 12),

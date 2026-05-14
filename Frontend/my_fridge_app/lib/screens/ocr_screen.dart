@@ -51,51 +51,44 @@ class _OcrScreenState extends State<OcrScreen> {
   }
 
   Future<void> registerIngredient() async {
-    final userId = AuthService.currentUser?.id ?? 'user_1';
+    // AuthService에서 현재 유저 확인
+    if (AuthService.currentUser == null) return;
+
+    final String source = mode == RegisterMode.receipt 
+        ? IngredientSource.receipt 
+        : IngredientSource.image;
 
     if (mode == RegisterMode.receipt) {
+      // 영수증 인식 시뮬레이션: 개별 파라미터로 전달
       await IngredientService.addIngredient(
-        Ingredient(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          userId: userId,
-          name: '우유',
-          category: '유제품',
-          emoji: '🥛',
-          dday: 7,
-          count: 1,
-          expireDate: '2026-05-10',
-          imagePath: pickedImage?.path,
-        ),
+        name: '우유',
+        category: IngredientCategory.dairy,
+        emoji: '🥛',
+        count: 1,
+        expireDate: DateTime.now().add(const Duration(days: 7)),
+        imageURL: pickedImage?.path,
+        addedVia: source,
       );
 
       await IngredientService.addIngredient(
-        Ingredient(
-          id: '${DateTime.now().millisecondsSinceEpoch}_2',
-          userId: userId,
-          name: '달걀',
-          category: '신선식품',
-          emoji: '🥚',
-          dday: 5,
-          count: 10,
-          expireDate: '2026-05-08',
-          imagePath: pickedImage?.path,
-        ),
+        name: '달걀',
+        category: IngredientCategory.egg,
+        emoji: '🥚',
+        count: 10,
+        expireDate: DateTime.now().add(const Duration(days: 5)),
+        imageURL: pickedImage?.path,
+        addedVia: source,
       );
-    }
-
-    if (mode == RegisterMode.image) {
+    } else if (mode == RegisterMode.image) {
+      // 이미지 인식 시뮬레이션
       await IngredientService.addIngredient(
-        Ingredient(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          userId: userId,
-          name: '토마토',
-          category: '채소',
-          emoji: '🍅',
-          dday: 6,
-          count: 3,
-          expireDate: '2026-05-09',
-          imagePath: pickedImage?.path,
-        ),
+        name: '토마토',
+        category: IngredientCategory.vegetable,
+        emoji: '🍅',
+        count: 3,
+        expireDate: DateTime.now().add(const Duration(days: 6)),
+        imageURL: pickedImage?.path,
+        addedVia: source,
       );
     }
 
@@ -125,11 +118,9 @@ class _OcrScreenState extends State<OcrScreen> {
     if (mode == RegisterMode.receipt) {
       return 'OCR 서버에서 영수증 텍스트를 추출했습니다.';
     }
-
     if (mode == RegisterMode.image) {
       return 'Image Recognition 서버에서 식재료를 추측했습니다.';
     }
-
     return '등록 방식을 선택해주세요';
   }
 
@@ -139,10 +130,7 @@ class _OcrScreenState extends State<OcrScreen> {
         children: [
           Text(
             '인식된 항목',
-            style: TextStyle(
-              color: AppColors.textSub,
-              fontSize: 13,
-            ),
+            style: TextStyle(color: AppColors.textSub, fontSize: 13),
           ),
           SizedBox(height: 8),
           Text(
@@ -157,7 +145,7 @@ class _OcrScreenState extends State<OcrScreen> {
           ),
           SizedBox(height: 8),
           Text(
-            '분류: 유제품, 신선식품',
+            '분류: 유제품, 달걀',
             style: TextStyle(color: AppColors.textSub),
           ),
         ],
@@ -168,10 +156,7 @@ class _OcrScreenState extends State<OcrScreen> {
       children: [
         Text(
           '인식된 식재료',
-          style: TextStyle(
-            color: AppColors.textSub,
-            fontSize: 13,
-          ),
+          style: TextStyle(color: AppColors.textSub, fontSize: 13),
         ),
         SizedBox(height: 8),
         Text(
@@ -184,7 +169,7 @@ class _OcrScreenState extends State<OcrScreen> {
         ),
         SizedBox(height: 8),
         Text(
-          '분류: 채소',
+          '분류: 야채',
           style: TextStyle(color: AppColors.textSub),
         ),
       ],
@@ -310,7 +295,7 @@ class _OcrScreenState extends State<OcrScreen> {
               width: 54,
               height: 54,
               decoration: BoxDecoration(
-                color: AppColors.mainGreen.withOpacity(0.15),
+                color: AppColors.mainGreen.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: AppColors.mainGreen, size: 30),

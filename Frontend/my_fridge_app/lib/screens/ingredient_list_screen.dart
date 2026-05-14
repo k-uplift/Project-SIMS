@@ -33,17 +33,19 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
   }
 
   Widget imageView(Ingredient item) {
-    if (item.imagePath == null) {
+    // 필드명 변경 반영 (imagePath -> imageURL)
+    if (item.imageURL == null) {
       return Container(
         width: 54,
         height: 54,
         decoration: BoxDecoration(
-          color: AppColors.mainGreen.withOpacity(0.2),
+          // 최신 버전 권장 API 사용
+          color: AppColors.mainGreen.withValues(alpha: 0.2),
           shape: BoxShape.circle,
         ),
         child: Center(
           child: Text(
-            item.emoji,
+            item.emoji ?? '❓', // null 대비
             style: const TextStyle(fontSize: 24),
           ),
         ),
@@ -52,10 +54,11 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
 
     return ClipOval(
       child: Image.file(
-        File(item.imagePath!),
+        File(item.imageURL!),
         width: 54,
         height: 54,
         fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image),
       ),
     );
   }
@@ -86,11 +89,8 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
       ),
     );
 
-    if (changed == true && mounted) {
-      setState(() {
-        loadIngredients();
-      });
-    } else {
+    // 상세 화면에서 돌아왔을 때 목록 새로고침
+    if (mounted) {
       setState(() {
         loadIngredients();
       });
@@ -157,11 +157,15 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
           child: FutureBuilder<List<Ingredient>>(
             future: ingredientFuture,
             builder: (context, snapshot) {
-              if (!snapshot.hasData) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              final ingredients = snapshot.data!;
+              if (snapshot.hasError) {
+                return Center(child: Text('오류가 발생했습니다: ${snapshot.error}'));
+              }
+
+              final ingredients = snapshot.data ?? [];
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -192,11 +196,18 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
                         style: TextStyle(color: AppColors.textSub),
                       ),
                     )
-                        : ListView.builder(
-                      itemCount: ingredients.length,
-                      itemBuilder: (context, index) {
-                        return ingredientCard(ingredients[index]);
+                        : RefreshIndicator(
+                      onRefresh: () async {
+                        setState(() {
+                          loadIngredients();
+                        });
                       },
+                      child: ListView.builder(
+                        itemCount: ingredients.length,
+                        itemBuilder: (context, index) {
+                          return ingredientCard(ingredients[index]);
+                        },
+                      ),
                     ),
                   ),
                 ],
