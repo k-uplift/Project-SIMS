@@ -28,10 +28,17 @@ _init_firebase()
 
 
 class CurrentUser:
-    def __init__(self, uid: str, email: Optional[str], name: Optional[str]):
+    def __init__(
+        self,
+        uid: str,
+        email: Optional[str],
+        name: Optional[str],
+        picture: Optional[str],
+    ):
         self.uid = uid
         self.email = email
         self.name = name
+        self.picture = picture
 
 
 def get_current_user(
@@ -51,6 +58,7 @@ def get_current_user(
         uid=decoded["uid"],
         email=decoded.get("email"),
         name=decoded.get("name"),
+        picture=decoded.get("picture"),
     )
 
 

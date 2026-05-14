@@ -99,4 +99,11 @@ class AuthService {
   static Future<void> logout() async {
     await _auth.signOut();
   }
+
+  /// 현재 로그인된 사용자의 Firebase ID 토큰 발급.
+  /// 백엔드(Render) API 호출 시 Authorization 헤더에 첨부.
+  /// [forceRefresh] true면 캐시 무시하고 새로 발급.
+  static Future<String?> getIdToken({bool forceRefresh = false}) async {
+    return await _auth.currentUser?.getIdToken(forceRefresh);
+  }
 }
