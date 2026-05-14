@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_profile.dart';
 import '../repositories/fridge_repository.dart';
 import '../repositories/user_repository.dart';
+import 'fcm_service.dart';
 
 class AuthService {
   AuthService._();
@@ -22,8 +23,6 @@ class AuthService {
   }
 
   /// 회원가입.
-  /// 성공 시 null, 실패 시 사람이 읽을 수 있는 에러 메시지를 반환.
-  /// 가입 직후 users/{uid} 문서를 만들고, 기본 냉장고를 1개 생성한다.
   static Future<String?> signUp({
     required String email,
     required String nickname,
@@ -42,18 +41,20 @@ class AuthService {
       final user = cred.user;
       if (user == null) return '회원가입에 실패했습니다.';
 
-      // Firestore 사용자 프로필 생성
       await UserRepository.instance.createOrUpdate(
         uid: user.uid,
         email: email,
         displayName: nickname,
       );
 
-      // 기본 냉장고 1개 생성 (멤버=본인)
       await FridgeRepository.instance.create(
         ownerUid: user.uid,
         name: '$nickname의 냉장고',
       );
+
+      // 회원가입 성공 직후도 토큰 등록 (가입하자마자 자동 로그인 상태)
+      // fire-and-forget — 실패해도 회원가입 자체엔 영향 없음
+      FcmService.registerForUser();
 
       return null;
     } on FirebaseAuthException catch (e) {
@@ -72,7 +73,7 @@ class AuthService {
     }
   }
 
-  /// 로그인. 기존 인터페이스(rememberLogin 포함) 유지.
+  /// 로그인. 성공 시 FCM 토큰 등록까지.
   static Future<bool> login({
     required String email,
     required String password,
@@ -83,19 +84,27 @@ class AuthService {
         email: email,
         password: password,
       );
+      // 로그인 직후 토큰 등록 (fire-and-forget)
+      FcmService.registerForUser();
       return true;
     } on FirebaseAuthException {
       return false;
     }
   }
 
-  /// 앱 시작 시 호출. Firebase Auth가 토큰을 자동 복구하므로
-  /// currentUser != null 이면 자동 로그인된 상태.
+  /// 앱 시작 시 호출.
   static Future<bool> checkSavedLogin() async {
     return _auth.currentUser != null;
   }
 
+  /// 로그아웃. 토큰 해제 후 signOut.
   static Future<void> logout() async {
+    // 토큰 먼저 해제 (signOut하면 uid가 사라져서 못 함)
+    try {
+      await FcmService.unregisterForUser();
+    } catch (_) {
+      // 토큰 해제 실패해도 로그아웃은 진행
+    }
     await _auth.signOut();
   }
 }
