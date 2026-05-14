@@ -2,6 +2,13 @@ from app.schemas.chat import ChatRequest, ChatResponse, MessageRole
 from app.schemas.common import ErrorResponse, HealthResponse
 from app.schemas.dummy import EchoRequest, EchoResponse, WhoAmIResponse
 from app.schemas.fcm import DevicePlatform, FCMRegisterRequest, FCMRegisterResponse
+from app.schemas.fridges import (
+    Fridge,
+    FridgeCreate,
+    FridgeJoinRequest,
+    FridgeJoinResponse,
+    FridgeListResponse,
+)
 from app.schemas.ingredients import (
     ImageIngestRequest,
     IngestResponse,
@@ -20,6 +27,7 @@ from app.schemas.recipes import (
     RecipeRecommendResponse,
 )
 from app.schemas.tasks import CheckExpiryResponse
+from app.schemas.users import User, UserMeResponse
 
 __all__ = [
     # common
@@ -54,4 +62,13 @@ __all__ = [
     "FCMRegisterResponse",
     # tasks
     "CheckExpiryResponse",
+    # fridges
+    "Fridge",
+    "FridgeCreate",
+    "FridgeJoinRequest",
+    "FridgeJoinResponse",
+    "FridgeListResponse",
+    # users
+    "User",
+    "UserMeResponse",
 ]
