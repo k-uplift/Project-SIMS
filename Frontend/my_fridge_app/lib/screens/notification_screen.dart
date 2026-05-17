@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/ingredient.dart';
 import '../services/ingredient_service.dart';
+import '../services/storage_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/bottom_nav.dart';
 
@@ -15,7 +16,6 @@ class NotificationScreen extends StatelessWidget {
   }
 
   Widget imageView(Ingredient item) {
-    // 이미지가 없을 경우 에모지 표시
     if (item.imageURL == null || item.imageURL!.isEmpty) {
       return Container(
         width: 48,
@@ -33,10 +33,13 @@ class NotificationScreen extends StatelessWidget {
       );
     }
 
-    // 이미지가 있을 경우 표시
+    final imageProvider = StorageService.isRemoteUrl(item.imageURL)
+        ? NetworkImage(item.imageURL!) as ImageProvider
+        : FileImage(File(item.imageURL!));
+
     return ClipOval(
-      child: Image.file(
-        File(item.imageURL!),
+      child: Image(
+        image: imageProvider,
         width: 48,
         height: 48,
         fit: BoxFit.cover,
@@ -121,7 +124,7 @@ class NotificationScreen extends StatelessWidget {
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            '유통기한 ${item.dday}일 남았습니다',
+                                            item.ddayDescription,
                                             style: const TextStyle(
                                               color: AppColors.textSub,
                                             ),
@@ -130,7 +133,7 @@ class NotificationScreen extends StatelessWidget {
                                       ),
                                     ),
                                     Text(
-                                      'D-${item.dday}',
+                                      item.ddayLabel,
                                       style: TextStyle(
                                         color: ddayColor(item.dday),
                                         fontWeight: FontWeight.bold,

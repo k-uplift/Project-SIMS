@@ -2,10 +2,7 @@ import 'dart:io';
 
 import 'package:firebase_storage/firebase_storage.dart';
 
-/// Firebase Storage 업로드/삭제를 캡슐화.
-///
-/// 경로 규칙: fridges/{fridgeId}/ingredients/{ingredientId}.jpg
-/// (냉장고 단위로 묶어서 공유 멤버 권한 관리를 쉽게 한다)
+/// 이미지 저장 서비스
 class StorageService {
   StorageService._();
 
@@ -18,8 +15,7 @@ class StorageService {
     return 'fridges/$fridgeId/ingredients/$ingredientId.jpg';
   }
 
-  /// 식재료 이미지를 업로드하고 다운로드 URL을 반환.
-  /// 실패 시 null 반환 (호출부에서 "이미지 없이 등록" 분기 처리).
+  /// 식재료 이미지 업로드
   static Future<String?> uploadIngredientImage({
     required String fridgeId,
     required String ingredientId,
@@ -40,15 +36,13 @@ class StorageService {
       );
       return await task.ref.getDownloadURL();
     } catch (e) {
-      // 네트워크 / 권한 / 파일 깨짐 등 모든 경우를 묶어서 null.
       // ignore: avoid_print
       print('[StorageService] uploadIngredientImage 실패: $e');
       return null;
     }
   }
 
-  /// 식재료 삭제 시 Storage에 남은 이미지도 정리.
-  /// 이미지가 없거나 이미 삭제된 경우는 조용히 무시.
+  /// 식재료 이미지 삭제
   static Future<void> deleteIngredientImage({
     required String fridgeId,
     required String ingredientId,
@@ -61,7 +55,7 @@ class StorageService {
       ))
           .delete();
     } on FirebaseException catch (e) {
-      if (e.code == 'object-not-found') return; // 원래 없으면 OK
+      if (e.code == 'object-not-found') return; // 없으면 무시
       // ignore: avoid_print
       print('[StorageService] deleteIngredientImage 실패: $e');
     } catch (e) {
@@ -70,8 +64,7 @@ class StorageService {
     }
   }
 
-  /// 외부 URL인지 (Firebase Storage가 발급한 downloadURL 등) 판별.
-  /// 화면에서 Image.network vs Image.file 분기에 사용.
+  /// URL 이미지인지 확인
   static bool isRemoteUrl(String? value) {
     if (value == null || value.isEmpty) return false;
     return value.startsWith('http://') || value.startsWith('https://');

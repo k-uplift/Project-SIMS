@@ -6,7 +6,7 @@ import '../repositories/user_repository.dart';
 import 'ingredient_service.dart';
 import 'user_profile_service.dart';
 
-/// 공유 냉장고 참여 결과.
+/// 냉장고 참여 결과
 enum JoinFridgeResult {
   success,
   alreadyMember,
@@ -14,8 +14,7 @@ enum JoinFridgeResult {
   notLoggedIn,
 }
 
-/// 화면에 뿌리기 좋도록 냉장고 + 표시명(owner displayName 기반) 묶음.
-/// "{닉네임}의 냉장고" 형식. owner 정보가 없으면 '알 수 없음의 냉장고'.
+/// 냉장고 화면용 데이터
 class FridgeView {
   final Fridge fridge;
   final String displayName;
@@ -26,22 +25,17 @@ class FridgeView {
   int get memberCount => fridge.memberUids.length;
 }
 
-/// 화면에서 쓰는 냉장고 관련 wrapper.
-///
-/// 메인 냉장고:
-/// - users/{uid}.primaryFridgeId 가 있고 fridgeIds에 포함되면 그걸 사용.
-/// - 없으면 fridgeIds.first (기존 동작과 호환).
+/// 냉장고 처리 서비스
 class FridgeService {
   FridgeService._();
 
-  /// 냉장고 표시명. 항상 "{owner displayName}의 냉장고" 형식.
-  /// Fridge.name 필드는 무시 (수동 이름이 있어도 일관성 위해 displayName 기준).
+  /// 냉장고 이름 표시
   static Future<String> displayNameFor(Fridge fridge) async {
     final ownerName = await UserProfileService.displayNameOf(fridge.ownerUid);
     return '$ownerName의 냉장고';
   }
 
-  /// 현재 사용자의 메인 냉장고 ID. 없으면 null.
+  /// 현재 냉장고 ID
   static Future<String?> currentFridgeId() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return null;
@@ -49,22 +43,21 @@ class FridgeService {
     return profile?.effectivePrimaryFridgeId;
   }
 
-  /// 메인 냉장고 정보.
+  /// 현재 냉장고 정보
   static Future<Fridge?> currentFridge() async {
     final id = await currentFridgeId();
     if (id == null) return null;
     return FridgeRepository.instance.get(id);
   }
 
-  /// 메인 냉장고의 표시명 (홈 화면 헤더용).
+  /// 현재 냉장고 이름
   static Future<String?> currentFridgeDisplayName() async {
     final fridge = await currentFridge();
     if (fridge == null) return null;
     return displayNameFor(fridge);
   }
 
-  /// 사용자가 속한 모든 냉장고를 표시명까지 묶어서 반환.
-  /// 화면 깜빡임 없이 한 번에 렌더링 가능.
+  /// 내 냉장고 목록
   static Future<List<FridgeView>> myFridges() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return [];
@@ -81,7 +74,7 @@ class FridgeService {
     return views;
   }
 
-  /// 메인 냉장고 설정. 식재료 캐시도 같이 무효화.
+  /// 메인 냉장고 변경
   static Future<void> setPrimaryFridge(String fridgeId) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -89,16 +82,14 @@ class FridgeService {
     IngredientService.clearCache();
   }
 
-  /// 내 냉장고의 공유 코드. 구버전 데이터엔 없을 수 있어서 ensureInviteCode로
-  /// 자동 발급까지 처리.
+  /// 내 공유 코드
   static Future<String?> myInviteCode() async {
     final id = await currentFridgeId();
     if (id == null) return null;
     return FridgeRepository.instance.ensureInviteCode(id);
   }
 
-  /// 공유 코드로 냉장고 참여.
-  /// 이미 멤버면 alreadyMember 반환. 코드 자체가 없으면 codeNotFound.
+  /// 공유 코드로 참여
   static Future<JoinFridgeResult> joinByCode(String code) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return JoinFridgeResult.notLoggedIn;

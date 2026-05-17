@@ -13,11 +13,10 @@ class FridgeRepository {
   CollectionReference<Map<String, dynamic>> get _fridges =>
       _db.collection('fridges');
 
-  /// I, O, 0, 1 은 헷갈리니까 제외한 영문대문자+숫자 6자.
+  /// 공유 코드 문자
   static const _codeAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-  /// 충돌이 없을 때까지 (최대 5번) 재시도하면서 6자리 코드 생성.
-  /// 32^6 ≈ 10억 조합이라 5회 안에 거의 무조건 성공.
+  /// 공유 코드 만들기
   Future<String> _generateUniqueInviteCode() async {
     final rng = Random.secure();
     for (var attempt = 0; attempt < 5; attempt++) {
@@ -32,7 +31,7 @@ class FridgeRepository {
           .get();
       if (existing.docs.isEmpty) return code;
     }
-    // 5번 다 충돌은 사실상 불가능. 최후의 수단으로 7자 시도.
+    // 혹시 겹치면 7자리로 생성
     final rng2 = Random.secure();
     return List.generate(
       7,
@@ -40,7 +39,7 @@ class FridgeRepository {
     ).join();
   }
 
-  /// 냉장고 새로 생성 (invite code 자동 발급).
+  /// 냉장고 생성
   Future<Fridge> create({
     required String ownerUid,
     String name = '내 냉장고',
@@ -75,8 +74,7 @@ class FridgeRepository {
     });
   }
 
-  /// invite code로 냉장고 찾기. 없으면 null.
-  /// 대소문자 무시 (사용자 입력 친화).
+  /// 공유 코드로 찾기
   Future<Fridge?> findByInviteCode(String code) async {
     final normalized = code.trim().toUpperCase();
     if (normalized.isEmpty) return null;
@@ -89,7 +87,7 @@ class FridgeRepository {
     return Fridge.fromFirestore(snap.docs.first);
   }
 
-  /// 구버전 데이터(invite code 없는 냉장고)에 코드 발급. 이미 있으면 그대로 반환.
+  /// 공유 코드 확인
   Future<String> ensureInviteCode(String fridgeId) async {
     final fridge = await get(fridgeId);
     if (fridge == null) throw StateError('냉장고를 찾을 수 없습니다.');
@@ -104,7 +102,7 @@ class FridgeRepository {
     return code;
   }
 
-  /// 동거인 추가: fridge.memberUids + user.fridgeIds 양쪽 갱신.
+  /// 멤버 추가
   Future<void> addMember({
     required String fridgeId,
     required String memberUid,

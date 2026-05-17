@@ -1,13 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// users/{uid}
+/// 사용자 정보
 class UserProfile {
   final String uid;
   final String email;
   final String? displayName;
   final String? photoURL;
   final List<String> fridgeIds;
-  /// 현재 메인으로 사용할 냉장고. null이면 fridgeIds.first 사용.
+  /// 현재 냉장고
   final String? primaryFridgeId;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -23,9 +23,7 @@ class UserProfile {
     required this.updatedAt,
   });
 
-  /// 메인 냉장고 ID를 안전하게 가져옴.
-  /// primaryFridgeId가 있고 fridgeIds에 포함되면 그걸 쓰고,
-  /// 아니면 fridgeIds.first. fridgeIds가 비어있으면 null.
+  /// 사용할 냉장고 ID
   String? get effectivePrimaryFridgeId {
     final pf = primaryFridgeId;
     if (pf != null && fridgeIds.contains(pf)) return pf;
@@ -62,14 +60,13 @@ class UserProfile {
   }
 }
 
-/// fridges/{fridgeId}
+/// 냉장고 정보
 class Fridge {
   final String id;
   final String name;
   final String ownerUid;
   final List<String> memberUids;
-  /// 6자리 영문대문자+숫자 공유 코드. 가입 시 자동 발급.
-  /// 구버전 데이터엔 없을 수 있어서 nullable.
+  /// 공유 코드
   final String? inviteCode;
   final DateTime createdAt;
   final DateTime updatedAt;

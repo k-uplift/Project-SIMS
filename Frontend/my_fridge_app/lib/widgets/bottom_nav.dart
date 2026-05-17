@@ -24,7 +24,7 @@ class BottomNav extends StatelessWidget {
       ['식재료 등록', Icons.add_circle_outline, const OcrScreen()],
       ['식재료 리스트', Icons.list_alt, const IngredientListScreen()],
       ['홈', Icons.home, const HomeScreen()],
-      ['LLM', Icons.smart_toy_outlined, const LlmScreen()],
+      ['chat 셰프', Icons.smart_toy_outlined, const LlmScreen()],
       ['레시피 추천', Icons.restaurant_menu, const RecipeScreen()],
     ];
 

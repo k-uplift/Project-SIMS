@@ -48,10 +48,10 @@ class Recipe {
   }
 }
 
-/// recipesHistory/{uid}/items/{recipeId}
+/// 레시피 기록
 class RecipeHistoryItem {
   final Recipe recipe;
-  final String source;       // llm | saved
+  final String source;
   final DateTime viewedAt;
 
   const RecipeHistoryItem({

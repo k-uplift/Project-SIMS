@@ -7,19 +7,14 @@ import '../repositories/ingredient_repository.dart';
 import '../repositories/user_repository.dart';
 import 'storage_service.dart';
 
-/// UI 호환을 위한 wrapper. 내부적으로 IngredientRepository 호출.
-///
-/// 메인 냉장고:
-/// - users/{uid}.primaryFridgeId 가 있고 fridgeIds에 포함되면 그걸 사용.
-/// - 없으면 fridgeIds.first.
-/// - 둘 다 없으면 새로 생성.
+/// 식재료 처리 서비스
 class IngredientService {
   IngredientService._();
 
-  /// 캐시된 fridgeId. 메인 냉장고 변경 시 clearCache() 호출 필요.
+  /// 현재 냉장고 캐시
   static String? _cachedFridgeId;
 
-  /// 현재 사용자의 메인 냉장고 ID. 없으면 새로 생성.
+  /// 현재 냉장고 가져오기
   static Future<String> currentFridgeId() async {
     if (_cachedFridgeId != null) return _cachedFridgeId!;
 
@@ -33,7 +28,7 @@ class IngredientService {
       return _cachedFridgeId!;
     }
 
-    // 프로필이 없거나 fridgeIds가 비어있으면 새로 만든다 (구버전 사용자 대비).
+    // 냉장고가 없으면 새로 만든다
     if (profile == null) {
       await UserRepository.instance.createOrUpdate(
         uid: uid,
@@ -45,7 +40,7 @@ class IngredientService {
     return _cachedFridgeId!;
   }
 
-  /// 메인 냉장고 변경 시 / 로그아웃 시 호출.
+  /// 캐시 초기화
   static void clearCache() {
     _cachedFridgeId = null;
   }
@@ -55,13 +50,13 @@ class IngredientService {
     return IngredientRepository.instance.list(fridgeId);
   }
 
-  /// 실시간 동기화가 필요한 화면에서 사용 (StreamBuilder).
+  /// 실시간 식재료 목록
   static Stream<List<Ingredient>> watchIngredients() async* {
     final fridgeId = await currentFridgeId();
     yield* IngredientRepository.instance.watch(fridgeId);
   }
 
-  /// 유통기한 7일 이내.
+  /// 유통기한 임박 식재료
   static Future<List<Ingredient>> getExpiringIngredients({
     int withinDays = 7,
   }) async {
@@ -77,14 +72,7 @@ class IngredientService {
         .watchExpiring(fridgeId, withinDays: withinDays);
   }
 
-  /// 식재료 추가.
-  ///
-  /// [imageLocalPath]가 주어지면 Firebase Storage에 업로드 후 다운로드 URL을
-  /// imageURL 필드에 저장한다. 업로드 실패 시에도 식재료 자체는 등록되고
-  /// imageURL만 null이 된다 (UX 우선).
-  ///
-  /// 흐름: Firestore 문서 add → ingredientId 확보 → Storage 업로드 →
-  ///       성공 시 imageURL update.
+  /// 식재료 추가
   static Future<Ingredient> addIngredient({
     required String name,
     required String category,
@@ -98,7 +86,7 @@ class IngredientService {
     if (uid == null) throw StateError('로그인이 필요합니다.');
     final fridgeId = await currentFridgeId();
 
-    // 1) 먼저 Firestore에 추가 (imageURL은 일단 null)
+    // 먼저 식재료 저장
     var ingredient = await IngredientRepository.instance.add(
       fridgeId: fridgeId,
       name: name,
@@ -111,7 +99,7 @@ class IngredientService {
       addedVia: addedVia,
     );
 
-    // 2) 로컬 파일이 있으면 업로드
+    // 사진이 있으면 업로드
     if (imageLocalPath != null && imageLocalPath.isNotEmpty) {
       final url = await StorageService.uploadIngredientImage(
         fridgeId: fridgeId,
@@ -119,7 +107,7 @@ class IngredientService {
         localFilePath: imageLocalPath,
       );
 
-      // 3) 업로드 성공 시 Firestore에 URL 반영
+      // 업로드 후 URL 저장
       if (url != null) {
         await IngredientRepository.instance.update(
           fridgeId: fridgeId,
@@ -128,15 +116,27 @@ class IngredientService {
         );
         ingredient = ingredient.copyWith(imageURL: url);
       }
-      // 실패 시: imageURL=null인 채로 그냥 둔다 (식재료는 이미 등록됨)
+      // 실패해도 식재료는 유지
     }
 
     return ingredient;
   }
 
-  /// 부분 업데이트. imageURL은 기존 값을 그대로 통과시키며,
-  /// 이미지 자체를 새로 교체하는 흐름은 현재 화면에서 미지원.
-  static Future<void> updateIngredient(Ingredient ingredient) async {
+  static Future<Ingredient> updateIngredient(
+    Ingredient ingredient, {
+    String? imageLocalPath,
+  }) async {
+    var imageURL = ingredient.imageURL;
+
+    if (imageLocalPath != null && imageLocalPath.isNotEmpty) {
+      final uploadedUrl = await StorageService.uploadIngredientImage(
+        fridgeId: ingredient.fridgeId,
+        ingredientId: ingredient.id,
+        localFilePath: imageLocalPath,
+      );
+      imageURL = uploadedUrl ?? ingredient.imageURL;
+    }
+
     await IngredientRepository.instance.update(
       fridgeId: ingredient.fridgeId,
       ingredientId: ingredient.id,
@@ -145,23 +145,25 @@ class IngredientService {
       emoji: ingredient.emoji,
       count: ingredient.count,
       expireDate: ingredient.expireDate,
-      imageURL: ingredient.imageURL,
+      imageURL: imageURL,
     );
+
+    return ingredient.copyWith(imageURL: imageURL);
   }
 
-  /// 식재료 삭제. Storage에 남은 이미지도 같이 정리.
+  /// 식재료 삭제
   static Future<void> deleteIngredient(String id) async {
     final fridgeId = await currentFridgeId();
     await IngredientRepository.instance
         .delete(fridgeId: fridgeId, ingredientId: id);
-    // Storage 정리는 best-effort (실패해도 무시).
+    // 사진도 같이 삭제
     await StorageService.deleteIngredientImage(
       fridgeId: fridgeId,
       ingredientId: id,
     );
   }
 
-  /// 부분 일치 검색 (홈 화면 검색바용).
+  /// 식재료 검색
   static Future<Ingredient?> searchIngredient(String keyword) async {
     if (keyword.isEmpty) return null;
     final fridgeId = await currentFridgeId();

@@ -19,7 +19,7 @@ class ChatRepository {
     return _sessions(uid).doc(sessionId).collection('messages');
   }
 
-  /// 새 세션 시작. 첫 메시지에서 자동으로 title 생성 (앞 20자).
+  /// 새 채팅 시작
   Future<ChatSession> createSession({
     required String uid,
     required String firstUserMessage,
@@ -55,7 +55,7 @@ class ChatRepository {
         .map((snap) => snap.docs.map(ChatSession.fromFirestore).toList());
   }
 
-  /// 메시지 1건 추가 + 세션 updatedAt 갱신.
+  /// 메시지 추가
   Future<ChatMessage> addMessage({
     required String uid,
     required String sessionId,
@@ -81,7 +81,7 @@ class ChatRepository {
     return message;
   }
 
-  /// 시간순으로 메시지 조회.
+  /// 메시지 조회
   Future<List<ChatMessage>> listMessages({
     required String uid,
     required String sessionId,
@@ -106,7 +106,7 @@ class ChatRepository {
     required String uid,
     required String sessionId,
   }) async {
-    // 메시지 서브컬렉션 먼저 비우기 (Firestore는 cascade delete 안 함)
+    // 메시지 먼저 삭제
     final msgs = await _messages(uid, sessionId).get();
     final batch = _db.batch();
     for (final doc in msgs.docs) {

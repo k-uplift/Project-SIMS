@@ -18,7 +18,7 @@ class IngredientListScreen extends StatefulWidget {
 class _IngredientListScreenState extends State<IngredientListScreen> {
   Future<List<Ingredient>>? ingredientFuture;
 
-  // 냉장고 선택용 상태
+  // 냉장고 상태
   List<FridgeView> myFridges = [];
   String? currentFridgeId;
   bool loadingFridges = true;
@@ -29,7 +29,7 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
     bootstrap();
   }
 
-  /// 냉장고 목록 + 현재 메인 + 식재료를 같이 로드.
+  /// 식재료 불러오기
   Future<void> bootstrap() async {
     final fridges = await FridgeService.myFridges();
     final current = await FridgeService.currentFridgeId();
@@ -176,7 +176,7 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
               ),
             ),
             Text(
-              'D-${item.dday}',
+              item.ddayLabel,
               style: TextStyle(
                 color: ddayColor(item.dday),
                 fontWeight: FontWeight.bold,
@@ -188,7 +188,7 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
     );
   }
 
-  /// 제목 영역: 냉장고가 1개면 그냥 이름만, 2개 이상이면 드롭다운으로.
+  /// 냉장고 제목
   Widget headerTitle() {
     if (loadingFridges) {
       return const Text(
@@ -355,16 +355,6 @@ class _IngredientListScreenState extends State<IngredientListScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   headerTitle(),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      categoryChip('전체', true),
-                      const SizedBox(width: 8),
-                      categoryChip('냉장', false),
-                      const SizedBox(width: 8),
-                      categoryChip('냉동', false),
-                    ],
-                  ),
                   const SizedBox(height: 20),
                   Expanded(
                     child: _buildListBody(snapshot),
