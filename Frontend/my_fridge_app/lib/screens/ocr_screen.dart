@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/ingredient.dart';
+import '../models/ocr_result.dart';
 import '../services/auth_service.dart';
 import '../services/ingredient_service.dart';
+import '../services/ocr_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/bottom_nav.dart';
 
@@ -23,15 +25,18 @@ class _OcrScreenState extends State<OcrScreen> {
   final _countController = TextEditingController(text: '1');
   final _expireDateController = TextEditingController();
   
-  // 기본값을 표준 카테고리에 맞춤
+  // 기본 카테고리
   String _selectedCategory = IngredientCategory.vegetable; 
   
   RegisterMode mode = RegisterMode.none;
   bool hasScanned = false;
+  bool isAnalyzing = false;
   bool showCompleteMessage = false;
+  String? ocrError;
   XFile? pickedImage;
+  List<OcrDraftItem> draftItems = [];
 
-  // 표준 카테고리 12종 사용
+  // 카테고리 목록
   static const List<String> _categories = IngredientCategory.all;
 
   @override
@@ -52,8 +57,34 @@ class _OcrScreenState extends State<OcrScreen> {
       mode = selectedMode;
       pickedImage = image;
       hasScanned = true;
+      isAnalyzing = true;
+      draftItems = [];
+      ocrError = null;
       showCompleteMessage = false;
     });
+
+    await analyzePickedImage(image.path);
+  }
+
+  Future<void> analyzePickedImage(String imagePath) async {
+    try {
+      final result = await OcrService.analyzeImage(imagePath);
+
+      if (!mounted) return;
+
+      setState(() {
+        draftItems = result.items;
+        isAnalyzing = false;
+        ocrError = draftItems.isEmpty ? '인식된 식재료가 없습니다. 다시 선택해주세요.' : null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        isAnalyzing = false;
+        ocrError = '이미지 분석에 실패했습니다. 다시 시도해주세요.';
+      });
+    }
   }
 
   Future<void> pickManualImage() async {
@@ -112,6 +143,9 @@ class _OcrScreenState extends State<OcrScreen> {
       mode = RegisterMode.none;
       pickedImage = null;
       hasScanned = false;
+      isAnalyzing = false;
+      draftItems = [];
+      ocrError = null;
       showCompleteMessage = false;
     });
   }
@@ -121,6 +155,9 @@ class _OcrScreenState extends State<OcrScreen> {
       mode = RegisterMode.manual;
       pickedImage = null;
       hasScanned = false;
+      isAnalyzing = false;
+      draftItems = [];
+      ocrError = null;
       showCompleteMessage = false;
     });
   }
@@ -138,7 +175,7 @@ class _OcrScreenState extends State<OcrScreen> {
     }
   }
 
-  // 직접 등록 로직을 새로운 Service 구조에 맞게 수정
+  // 직접 등록
   Future<void> registerManualIngredient() async {
     if (!(_manualFormKey.currentState?.validate() ?? false)) return;
 
@@ -176,38 +213,28 @@ class _OcrScreenState extends State<OcrScreen> {
 
   Future<void> registerIngredient() async {
     if (AuthService.currentUser == null) return;
+    final itemsToSave = draftItems
+        .where((item) => item.name.trim().isNotEmpty)
+        .toList();
+
+    if (itemsToSave.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('등록할 식재료가 없습니다.')),
+      );
+      return;
+    }
 
     final String source = mode == RegisterMode.receipt 
         ? IngredientSource.receipt 
         : IngredientSource.image;
 
-    if (mode == RegisterMode.receipt) {
+    for (final item in itemsToSave) {
       await IngredientService.addIngredient(
-        name: '우유',
-        category: IngredientCategory.dairy,
-        emoji: '🥛',
-        count: 1,
+        name: item.name.trim(),
+        category: item.category,
+        emoji: emojiForCategory(item.category),
+        count: item.count,
         expireDate: DateTime.now().add(const Duration(days: 7)),
-        imageLocalPath: pickedImage?.path,
-        addedVia: source,
-      );
-
-      await IngredientService.addIngredient(
-        name: '달걀',
-        category: IngredientCategory.egg,
-        emoji: '🥚',
-        count: 10,
-        expireDate: DateTime.now().add(const Duration(days: 5)),
-        imageLocalPath: pickedImage?.path,
-        addedVia: source,
-      );
-    } else if (mode == RegisterMode.image) {
-      await IngredientService.addIngredient(
-        name: '토마토',
-        category: IngredientCategory.vegetable,
-        emoji: '🍅',
-        count: 3,
-        expireDate: DateTime.now().add(const Duration(days: 6)),
         imageLocalPath: pickedImage?.path,
         addedVia: source,
       );
@@ -224,6 +251,8 @@ class _OcrScreenState extends State<OcrScreen> {
           mode = RegisterMode.none;
           pickedImage = null;
           hasScanned = false;
+          draftItems = [];
+          ocrError = null;
         });
       }
     });
@@ -250,48 +279,114 @@ class _OcrScreenState extends State<OcrScreen> {
   }
 
   Widget getResultText() {
-    if (mode == RegisterMode.receipt) {
+    if (isAnalyzing) {
       return const Column(
         children: [
-          Text(
-            '인식된 항목',
-            style: TextStyle(color: AppColors.textSub, fontSize: 13),
-          ),
-          SizedBox(height: 8),
-          Text(
-            '우유 1개\n달걀 10개',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.textMain,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              height: 1.4,
-            ),
-          ),
-          SizedBox(height: 8),
-          Text('분류: 유제품, 신선식품', style: TextStyle(color: AppColors.textSub)),
+          CircularProgressIndicator(),
+          SizedBox(height: 12),
+          Text('이미지를 분석하고 있습니다.', style: TextStyle(color: AppColors.textSub)),
         ],
       );
     }
 
-    return const Column(
+    if (ocrError != null) {
+      return Text(
+        ocrError!,
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: AppColors.warningRed),
+      );
+    }
+
+    return Column(
       children: [
-        Text(
-          '인식된 식재료',
+        const Text(
+          '분석된 식재료',
           style: TextStyle(color: AppColors.textSub, fontSize: 13),
         ),
-        SizedBox(height: 8),
-        Text(
-          '토마토 3개',
-          style: TextStyle(
-            color: AppColors.textMain,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        SizedBox(height: 8),
-        Text('분류: 채소', style: TextStyle(color: AppColors.textSub)),
+        const SizedBox(height: 10),
+        ...draftItems.asMap().entries.map(
+              (entry) => draftItemEditor(entry.key, entry.value),
+            ),
       ],
+    );
+  }
+
+  Widget draftItemEditor(int index, OcrDraftItem item) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F8F5),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  initialValue: item.name,
+                  decoration: const InputDecoration(
+                    labelText: '품목명',
+                    border: InputBorder.none,
+                  ),
+                  onChanged: (value) => item.name = value,
+                ),
+              ),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    draftItems.removeAt(index);
+                  });
+                },
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: DropdownButtonFormField<String>(
+                  value: IngredientCategory.all.contains(item.category)
+                      ? item.category
+                      : IngredientCategory.other,
+                  decoration: const InputDecoration(
+                    labelText: '카테고리',
+                    border: InputBorder.none,
+                  ),
+                  items: IngredientCategory.all
+                      .map(
+                        (category) => DropdownMenuItem(
+                          value: category,
+                          child: Text(category),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() {
+                      item.category = value;
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextFormField(
+                  initialValue: item.quantity.isEmpty ? '1' : item.quantity,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: '수량',
+                    border: InputBorder.none,
+                  ),
+                  onChanged: (value) => item.quantity = value,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -471,34 +566,53 @@ class _OcrScreenState extends State<OcrScreen> {
   }
 
   Widget scannedResultView() {
-    return Container(
-      width: 310,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ClipOval(
-            child: pickedImage == null
-                ? Container(
-                    width: 220,
-                    height: 220,
-                    color: const Color(0xFFF1F1EF),
-                    child: const Center(child: Icon(Icons.image, size: 80)),
-                  )
-                : Image.file(
-                    File(pickedImage!.path),
-                    width: 220,
-                    height: 220,
-                    fit: BoxFit.cover,
-                  ),
-          ),
-          const SizedBox(height: 16),
-          getResultText(),
-        ],
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      child: Container(
+        width: 310,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipOval(
+              child: pickedImage == null
+                  ? Container(
+                      width: 220,
+                      height: 220,
+                      color: const Color(0xFFF1F1EF),
+                      child: const Center(child: Icon(Icons.image, size: 80)),
+                    )
+                  : Image.file(
+                      File(pickedImage!.path),
+                      width: 220,
+                      height: 220,
+                      fit: BoxFit.cover,
+                    ),
+            ),
+            const SizedBox(height: 16),
+            getResultText(),
+            if (!isAnalyzing && draftItems.isNotEmpty)
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    draftItems.add(
+                      OcrDraftItem(
+                        name: '',
+                        category: IngredientCategory.other,
+                        quantity: '1',
+                      ),
+                    );
+                  });
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('항목 추가'),
+              ),
+          ],
+        ),
       ),
     );
   }

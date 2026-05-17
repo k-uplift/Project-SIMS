@@ -12,7 +12,7 @@ class RecipeHistoryRepository {
     return _db.collection('recipesHistory').doc(uid).collection('items');
   }
 
-  /// 레시피를 본/저장한 순간 호출. 같은 recipeId면 viewedAt만 갱신.
+  /// 레시피 기록 저장
   Future<void> record({
     required String uid,
     required Recipe recipe,
@@ -28,7 +28,7 @@ class RecipeHistoryRepository {
     await ref.set(item.toMap(), SetOptions(merge: true));
   }
 
-  /// 최근 본 순서대로 (limit 기본 50개).
+  /// 최근 본 레시피
   Future<List<RecipeHistoryItem>> list(
       String uid, {
         int limit = 50,

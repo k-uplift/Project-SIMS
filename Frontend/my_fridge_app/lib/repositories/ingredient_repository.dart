@@ -12,7 +12,7 @@ class IngredientRepository {
     return _db.collection('fridges').doc(fridgeId).collection('ingredients');
   }
 
-  /// 식재료 추가. 새 문서 ID를 자동 발급.
+  /// 식재료 추가
   Future<Ingredient> add({
     required String fridgeId,
     required String name,
@@ -44,7 +44,7 @@ class IngredientRepository {
     return ingredient;
   }
 
-  /// OCR/이미지 인식 결과 일괄 저장 (batch write로 한번에).
+  /// 여러 식재료 저장
   Future<List<Ingredient>> addBatch({
     required String fridgeId,
     required List<Ingredient> items,
@@ -75,7 +75,7 @@ class IngredientRepository {
     return saved;
   }
 
-  /// 유통기한 오름차순으로 전체 조회.
+  /// 식재료 목록
   Future<List<Ingredient>> list(String fridgeId) async {
     final query = await _collection(fridgeId)
         .orderBy('expireDate', descending: false)
@@ -85,7 +85,7 @@ class IngredientRepository {
         .toList();
   }
 
-  /// 실시간 스트림 (UI에서 StreamBuilder 사용).
+  /// 실시간 목록
   Stream<List<Ingredient>> watch(String fridgeId) {
     return _collection(fridgeId)
         .orderBy('expireDate', descending: false)
@@ -95,7 +95,7 @@ class IngredientRepository {
         .toList());
   }
 
-  /// D-day가 [withinDays] 이하인 항목만 (홈/알림 화면용).
+  /// 유통기한 임박 목록
   Stream<List<Ingredient>> watchExpiring(
       String fridgeId, {
         int withinDays = 7,
@@ -119,7 +119,7 @@ class IngredientRepository {
     return Ingredient.fromFirestore(snap, fridgeId);
   }
 
-  /// 부분 업데이트 (null 아닌 필드만 갱신).
+  /// 식재료 수정
   Future<void> update({
     required String fridgeId,
     required String ingredientId,
@@ -150,13 +150,13 @@ class IngredientRepository {
     await _collection(fridgeId).doc(ingredientId).delete();
   }
 
-  /// 이름으로 부분 검색 (Firestore는 LIKE가 없어서 prefix 매칭으로 처리).
+  /// 이름으로 검색
   Future<List<Ingredient>> searchByName({
     required String fridgeId,
     required String keyword,
   }) async {
     if (keyword.isEmpty) return [];
-    // \uf8ff = Unicode private area 끝. prefix 검색 패턴.
+    // prefix 검색용
     final query = await _collection(fridgeId)
         .where('name', isGreaterThanOrEqualTo: keyword)
         .where('name', isLessThanOrEqualTo: '$keyword\uf8ff')

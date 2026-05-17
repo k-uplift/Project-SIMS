@@ -10,7 +10,7 @@ class UserRepository {
   CollectionReference<Map<String, dynamic>> get _users =>
       _db.collection('users');
 
-  /// 회원가입 직후 호출. 이미 있으면 fridgeIds만 보존하고 갱신.
+  /// 사용자 저장
   Future<UserProfile> createOrUpdate({
     required String uid,
     required String email,
@@ -72,7 +72,7 @@ class UserRepository {
     });
   }
 
-  /// 메인 냉장고 설정. null로 호출하면 필드 자체 삭제.
+  /// 메인 냉장고 설정
   Future<void> setPrimaryFridge(String uid, String? fridgeId) async {
     await _users.doc(uid).update({
       'primaryFridgeId': fridgeId ?? FieldValue.delete(),

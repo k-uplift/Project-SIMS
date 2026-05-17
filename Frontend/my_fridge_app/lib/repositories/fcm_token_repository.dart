@@ -15,7 +15,7 @@ class FcmTokenRepository {
     return _db.collection('fcmTokens').doc(uid).collection('devices');
   }
 
-  /// 앱 시작 시 FCM 토큰 받으면 호출. deviceId가 같으면 토큰만 갱신.
+  /// 토큰 등록
   Future<void> register({
     required String uid,
     required String deviceId,
@@ -29,7 +29,7 @@ class FcmTokenRepository {
     }, SetOptions(merge: true));
   }
 
-  /// 로그아웃 시 호출.
+  /// 토큰 삭제
   Future<void> unregister({
     required String uid,
     required String deviceId,
@@ -37,7 +37,7 @@ class FcmTokenRepository {
     await _devices(uid).doc(deviceId).delete();
   }
 
-  /// Cloud Functions가 FCM 발송할 때 사용 (앱에서는 보통 안 씀).
+  /// 토큰 목록
   Future<List<String>> tokensFor(String uid) async {
     final snap = await _devices(uid).get();
     return snap.docs

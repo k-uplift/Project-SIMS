@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// schema-v1.md 2.8 표준 카테고리 12종
+/// 식재료 카테고리
 class IngredientCategory {
   static const vegetable = '야채';
   static const fruit = '과일';
@@ -36,8 +36,8 @@ class Ingredient {
   final int count;
   final DateTime expireDate;
   final String? imageURL;
-  final String addedBy;        // uid
-  final String addedVia;       // manual | receipt | image
+  final String addedBy;
+  final String addedVia;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -56,14 +56,24 @@ class Ingredient {
     required this.updatedAt,
   });
 
-  /// 유통기한까지 남은 일수 (오늘 기준)
+  /// 남은 일수
   int get dday {
     final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
     final exp = DateTime(expireDate.year, expireDate.month, expireDate.day);
     return exp.difference(today).inDays;
   }
 
-  /// 화면 표시용 'YYYY-MM-DD' 문자열
+  String get ddayLabel {
+    if (dday < 0) return '유통기한 만료';
+    return 'D-$dday';
+  }
+
+  String get ddayDescription {
+    if (dday < 0) return '유통기한이 만료되었습니다';
+    return '유통기한 $dday일 남았습니다';
+  }
+
+  /// 유통기한 표시
   String get expireDateString {
     return '${expireDate.year}-'
         '${expireDate.month.toString().padLeft(2, '0')}-'

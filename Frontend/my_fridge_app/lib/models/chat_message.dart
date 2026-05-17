@@ -9,7 +9,7 @@ class MessageRole {
 class ChatMessage {
   final String id;
   final String text;
-  final String role;          // user | assistant | system
+  final String role;
   final DateTime createdAt;
 
   const ChatMessage({
@@ -19,7 +19,7 @@ class ChatMessage {
     required this.createdAt,
   });
 
-  /// 기존 UI 호환을 위한 편의 getter
+  /// 사용자 메시지 여부
   bool get isUser => role == MessageRole.user;
 
   factory ChatMessage.fromFirestore(
@@ -43,7 +43,7 @@ class ChatMessage {
   }
 }
 
-/// chats/{uid}/sessions/{sessionId}
+/// 채팅 세션
 class ChatSession {
   final String id;
   final String title;

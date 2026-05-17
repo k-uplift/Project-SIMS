@@ -9,20 +9,20 @@ class AuthService {
 
   static final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  /// 현재 로그인된 사용자. 로그아웃 상태면 null.
+  /// 현재 사용자
   static User? get currentUser => _auth.currentUser;
 
-  /// Firebase Auth의 상태 변화 스트림 (앱 진입 시 분기 처리에 사용).
+  /// 로그인 상태 변경
   static Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  /// 현재 사용자의 프로필 (Firestore users/{uid}).
+  /// 현재 사용자 정보
   static Future<UserProfile?> currentProfile() async {
     final uid = currentUser?.uid;
     if (uid == null) return null;
     return UserRepository.instance.get(uid);
   }
 
-  /// 회원가입.
+  /// 회원가입
   static Future<String?> signUp({
     required String email,
     required String nickname,
@@ -52,8 +52,7 @@ class AuthService {
         name: '$nickname의 냉장고',
       );
 
-      // 회원가입 성공 직후도 토큰 등록 (가입하자마자 자동 로그인 상태)
-      // fire-and-forget — 실패해도 회원가입 자체엔 영향 없음
+      // 가입 후 알림 토큰 등록
       FcmService.registerForUser();
 
       return null;
@@ -73,7 +72,7 @@ class AuthService {
     }
   }
 
-  /// 로그인. 성공 시 FCM 토큰 등록까지.
+  /// 로그인
   static Future<bool> login({
     required String email,
     required String password,
@@ -84,7 +83,7 @@ class AuthService {
         email: email,
         password: password,
       );
-      // 로그인 직후 토큰 등록 (fire-and-forget)
+      // 로그인 후 알림 토큰 등록
       FcmService.registerForUser();
       return true;
     } on FirebaseAuthException {
@@ -92,18 +91,18 @@ class AuthService {
     }
   }
 
-  /// 앱 시작 시 호출.
+  /// 자동 로그인 확인
   static Future<bool> checkSavedLogin() async {
     return _auth.currentUser != null;
   }
 
-  /// 로그아웃. 토큰 해제 후 signOut.
+  /// 로그아웃
   static Future<void> logout() async {
-    // 토큰 먼저 해제 (signOut하면 uid가 사라져서 못 함)
+    // 알림 토큰 삭제
     try {
       await FcmService.unregisterForUser();
     } catch (_) {
-      // 토큰 해제 실패해도 로그아웃은 진행
+      // 실패해도 로그아웃 진행
     }
     await _auth.signOut();
   }

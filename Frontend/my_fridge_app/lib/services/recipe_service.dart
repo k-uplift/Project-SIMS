@@ -7,9 +7,7 @@ import '../models/recipe.dart';
 import '../repositories/recipe_history_repository.dart';
 import 'ingredient_service.dart';
 
-/// 레시피 서비스
-/// 1) LLM 실시간 생성 추천 (FastAPI 연동 예정)
-/// 2) 사용자가 확인한 레시피 이력 관리 (Firestore)
+/// 레시피 처리 서비스
 class RecipeService {
   RecipeService._();
 
@@ -17,10 +15,10 @@ class RecipeService {
     'API_BASE_URL',
     defaultValue: 'http://10.0.2.2:8000',
   );
-  static const String _fridgeId = 'fridge_1'; // 향후 실제 fridgeId로 교체 필요
+  static const String _fridgeId = 'fridge_1'; // 임시 냉장고 ID
   static const String _devToken = 'dev-token';
 
-  // 시뮬레이션을 위한 더미 레시피 데이터
+  // 더미 레시피 데이터
   static final List<Recipe> _recipes = [
     const Recipe(
       id: '1',
@@ -66,7 +64,7 @@ class RecipeService {
     ),
   ];
 
-  /// 최근 본 레시피 이력 가져오기
+  /// 최근 본 레시피
   static Future<List<Recipe>> getRecipes() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return [];
@@ -74,7 +72,7 @@ class RecipeService {
     return history.map((item) => item.recipe).toList();
   }
 
-  /// 실시간 레시피 이력 스트림
+  /// 레시피 이력 실시간 조회
   static Stream<List<Recipe>> watchRecipes() async* {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
@@ -86,7 +84,7 @@ class RecipeService {
         .map((items) => items.map((e) => e.recipe).toList());
   }
 
-  /// 레시피 추천 (FastAPI 연동 및 실패 시 더미 데이터 반환)
+  /// 레시피 추천
   static Future<List<Recipe>> recommendRecipes({
     int maxResults = 3,
     bool useDummyOnFailure = true,
@@ -115,13 +113,13 @@ class RecipeService {
           .toList();
     } catch (_) {
       if (!useDummyOnFailure) rethrow;
-      // API 실패 시 보유 식재료 기반 더미 추천
+      // 실패하면 더미 추천 사용
       await Future.delayed(const Duration(milliseconds: 600));
       return _dummyRecommendations(ingredients, maxResults);
     }
   }
 
-  /// 레시피 상세 화면 진입 시 기록 저장
+  /// 본 레시피 저장
   static Future<void> recordView({
     required Recipe recipe,
     String source = RecipeSource.llm,
@@ -135,7 +133,7 @@ class RecipeService {
     );
   }
 
-  /// 이력 내에서 제목으로 검색
+  /// 레시피 검색
   static Future<Recipe?> searchRecipe(String keyword) async {
     if (keyword.isEmpty) return null;
     final recipes = await getRecipes();
@@ -145,7 +143,7 @@ class RecipeService {
     return null;
   }
 
-  /// ID로 레시피 조회
+  /// ID로 레시피 찾기
   static Future<Recipe?> getRecipeById(String id) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return null;
@@ -157,7 +155,7 @@ class RecipeService {
     return null;
   }
 
-  // --- Private Helpers ---
+  // 내부 함수
 
   static Future<String> _request({
     required String method,
@@ -225,7 +223,7 @@ class RecipeService {
     final sortedIngredients = List<Ingredient>.from(ingredients)
       ..sort((a, b) => a.dday.compareTo(b.dday));
 
-    // 보유한 재료가 포함된 더미 레시피 필터링
+    // 가진 재료로 추천
     final recommended = _recipes.where((recipe) {
       return recipe.ownedIngredients.any(ingredientNames.contains);
     }).toList();
@@ -234,7 +232,7 @@ class RecipeService {
       return recommended.take(maxResults).toList();
     }
 
-    // 보유 재료와 매칭되는 레시피가 없을 경우 유통기한 임박 재료 기준 임시 생성
+    // 없으면 임시 추천 생성
     final first = sortedIngredients.first;
     return [
       Recipe(

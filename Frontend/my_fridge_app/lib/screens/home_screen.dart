@@ -22,13 +22,12 @@ class _HomeScreenState extends State<HomeScreen> {
   final searchController = TextEditingController();
   String searchMessage = '';
 
-  // 냉장고 선택용 상태
+  // 냉장고 상태
   List<FridgeView> myFridges = [];
   String? currentFridgeId;
   bool loadingFridges = true;
 
-  // 화면 갱신 트리거. 냉장고 바뀌면 이 키를 새로 만들어서
-  // FutureBuilder들이 다시 fetch하도록 함.
+  // 화면 새로고침용 키
   Key dataKey = UniqueKey();
 
   @override
@@ -54,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     setState(() {
       currentFridgeId = view.id;
-      // 유통기한 임박 / 알림 배지가 새 냉장고 기준으로 갱신되도록
+      // 냉장고 변경 후 다시 불러오기
       dataKey = UniqueKey();
     });
   }
@@ -105,7 +104,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// 헤더 부제목: 냉장고 0개면 '냉장고', 1개면 단순 텍스트, 2개+면 드롭다운.
+  /// 냉장고 제목
   Widget fridgeHeader() {
     const baseStyle = TextStyle(
       color: AppColors.textSub,
@@ -288,7 +287,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              items.map((item) => '${item.name} ${item.count}개 (D-${item.dday})').join('\n'),
+              items.map((item) => '${item.name} ${item.count}개 (${item.ddayLabel})').join('\n'),
               style: const TextStyle(fontSize: 14),
             ),
           ),
@@ -502,12 +501,26 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 12),
               FutureBuilder<List<Recipe>>(
                 key: ValueKey('recipe-$dataKey'),
-                future: RecipeService.getRecipes(),
+                future: RecipeService.recommendRecipes(),
                 builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (snapshot.hasError) {
+                    return const Text(
+                      '추천 레시피를 불러오지 못했습니다.',
+                      style: TextStyle(color: AppColors.textSub),
+                    );
+                  }
+
                   final recipes = snapshot.data ?? [];
 
                   if (recipes.isEmpty) {
-                    return const Text('추천 레시피가 없습니다.');
+                    return const Text(
+                      '식재료를 등록하면 추천 레시피가 표시됩니다.',
+                      style: TextStyle(color: AppColors.textSub),
+                    );
                   }
 
                   return Column(
