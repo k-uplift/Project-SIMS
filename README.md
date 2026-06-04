@@ -222,6 +222,10 @@ Project-SIMS/
 
 ---
 
+## 📷 시연 영상##
+
+https://youtube.com/shorts/deBxeyVGlMo?feature=share
+
 ## 👥 Contributors
 
 - **Developer**:
