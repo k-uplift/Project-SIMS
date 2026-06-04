@@ -70,12 +70,50 @@ class OcrResult {
   factory OcrResult.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'] as List<dynamic>? ?? [];
 
+    final parsed = rawItems
+        .map((item) => OcrDraftItem.fromJson(item as Map<String, dynamic>))
+        .toList();
+
     return OcrResult(
       sourceKind: json['source_kind'] as String? ?? '',
-      items: rawItems
-          .map((item) => OcrDraftItem.fromJson(item as Map<String, dynamic>))
-          .toList(),
+      items: _dedupeItems(parsed),
       model: json['model'] as String? ?? '',
     );
+  }
+
+  /// 같은 (이름, 카테고리)는 한 항목으로 합치고 수량을 더한다.
+  /// Gemini 환각으로 같은 객체가 여러 번 추출되는 케이스 대응.
+  /// 이름 비교는 모든 공백/대소문자 무시 ("광동 쌍화탕" == "광동쌍화탕").
+  static List<OcrDraftItem> _dedupeItems(List<OcrDraftItem> items) {
+    final result = <OcrDraftItem>[];
+    final indexByKey = <String, int>{};
+    for (final item in items) {
+      final normalized = _normalizeName(item.name);
+      if (normalized.isEmpty) {
+        result.add(item);
+        continue;
+      }
+      final key = '$normalized|${item.category}';
+      final existingIdx = indexByKey[key];
+      if (existingIdx == null) {
+        indexByKey[key] = result.length;
+        result.add(item);
+      } else {
+        // 기존 항목과 합치기: 수량 합산, 유통기한은 더 가까운 쪽
+        final existing = result[existingIdx];
+        final mergedCount = existing.count + item.count;
+        existing.quantity = mergedCount.toString();
+        if (item.expireDate.isBefore(existing.expireDate)) {
+          existing.expireDate = item.expireDate;
+        }
+      }
+    }
+    return result;
+  }
+
+  /// 이름 정규화: 모든 공백 제거 + 소문자.
+  /// 단순 trim만 하면 "광동 쌍화탕" 과 "광동쌍화탕" 이 다른 키로 잡힘.
+  static String _normalizeName(String name) {
+    return name.replaceAll(RegExp(r'\s+'), '').toLowerCase();
   }
 }
